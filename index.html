@@ -1,0 +1,3351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Classroom IoT Platform</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <style>
+    :root {
+      --bg: #eef3f8;
+      --panel: #ffffff;
+      --ink: #16324f;
+      --muted: #62748a;
+      --line: #d7e0ea;
+      --primary: #0f5b78;
+      --secondary: #178582;
+      --accent: #ef8354;
+      --success: #23825d;
+      --warning: #bf7b18;
+      --danger: #cb3a31;
+    }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(23, 133, 130, 0.18), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(239, 131, 84, 0.18), transparent 24%),
+        var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .auth-shell {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 1.5rem;
+    }
+
+    .auth-wrap {
+      width: min(1160px, 100%);
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 1.25rem;
+    }
+
+    .hero-panel,
+    .form-panel,
+    .panel-card,
+    .metric-card,
+    .command-btn {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(215, 224, 234, 0.9);
+      border-radius: 24px;
+      box-shadow: 0 22px 45px rgba(16, 34, 53, 0.09);
+      backdrop-filter: blur(12px);
+    }
+
+    .hero-panel {
+      padding: 2rem;
+      background: linear-gradient(140deg, rgba(15, 91, 120, 0.95), rgba(23, 133, 130, 0.93));
+      color: #fff;
+    }
+
+    .hero-chip {
+      display: inline-flex;
+      padding: 0.4rem 0.8rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      margin-bottom: 1rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+      margin-top: 1.5rem;
+    }
+
+    .hero-tile {
+      padding: 1rem;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .form-panel {
+      padding: 1.5rem;
+    }
+
+    .app-shell {
+      display: none;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 270px;
+      background: linear-gradient(180deg, #102235, #17344a);
+      color: #fff;
+      position: fixed;
+      inset: 0 auto 0 0;
+      padding: 1.25rem;
+      overflow-y: auto;
+    }
+
+    .brand {
+      padding: 1rem 1rem 1.25rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 1rem;
+    }
+
+    .nav-link.smart-link {
+      color: rgba(255, 255, 255, 0.74);
+      border-radius: 14px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 0.35rem;
+      font-weight: 600;
+    }
+
+    .nav-link.smart-link.active,
+    .nav-link.smart-link:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+
+    .main-content {
+      margin-left: 270px;
+      padding: 1.25rem;
+    }
+
+    .topbar {
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(215, 224, 234, 0.9);
+      border-radius: 22px;
+      padding: 1rem 1.2rem;
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      backdrop-filter: blur(14px);
+    }
+
+    .panel-card,
+    .metric-card,
+    .command-btn {
+      padding: 1rem;
+      height: 100%;
+    }
+
+    .metric-label,
+    .small-note {
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .metric-value {
+      font-size: 1.9rem;
+      font-weight: 700;
+    }
+
+    .section-view {
+      display: none;
+    }
+
+    .section-view.active {
+      display: block;
+    }
+
+    .status-pill {
+      border-radius: 999px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      background: rgba(35, 130, 93, 0.12);
+      color: var(--success);
+    }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.9rem;
+    }
+
+    .dashboard-quick-panel {
+      margin-top: 1rem;
+    }
+
+    .command-btn {
+      border: 0;
+      text-align: left;
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .command-btn:hover,
+    .attendance-filter:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 28px rgba(16, 34, 53, 0.12);
+    }
+
+    .attendance-filter {
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .command-card {
+      position: relative;
+    }
+
+    .pin-toggle {
+      position: absolute;
+      top: 0.8rem;
+      right: 0.8rem;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 0.18rem 0.65rem;
+      font-size: 0.74rem;
+      font-weight: 700;
+      z-index: 2;
+    }
+
+    .pin-toggle.active {
+      background: rgba(15, 91, 120, 0.12);
+      color: var(--primary);
+      border-color: rgba(15, 91, 120, 0.28);
+    }
+
+    .time-icon {
+      min-width: 2.75rem;
+      justify-content: center;
+      font-size: 1rem;
+    }
+
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .insight-card {
+      padding: 1rem;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(238, 243, 248, 0.9));
+      border: 1px solid var(--line);
+      height: 100%;
+    }
+
+    /* Prevent oversized blank space in Settings cards (e.g., Manual OTP for students) */
+    #view-settings .row {
+      align-items: flex-start;
+    }
+
+    #view-settings .panel-card,
+    #otpPanel {
+      height: auto;
+    }
+
+    .timeline-list,
+    .signal-list {
+      display: grid;
+      gap: 0.8rem;
+      margin-top: 0.9rem;
+    }
+
+    .timeline-step,
+    .signal-item,
+    .health-chip {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.8rem;
+      align-items: flex-start;
+      padding: 0.9rem 1rem;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.75);
+      border: 1px solid rgba(215, 224, 234, 0.9);
+    }
+
+    .timeline-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-top: 0.35rem;
+      flex: 0 0 auto;
+      background: var(--line);
+      box-shadow: 0 0 0 6px rgba(15, 91, 120, 0.08);
+    }
+
+    .timeline-step.ok .timeline-dot,
+    .trust-pill.good,
+    .health-pill.good {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .timeline-step.warn .timeline-dot,
+    .trust-pill.risky,
+    .health-pill.risky {
+      background: var(--warning);
+      color: #fff;
+    }
+
+    .timeline-step.danger .timeline-dot,
+    .health-pill.bad {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .trust-pill,
+    .health-pill {
+      border-radius: 999px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+      background: rgba(15, 91, 120, 0.12);
+      color: var(--primary);
+      white-space: nowrap;
+    }
+
+    .mini-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.85rem;
+      margin-top: 1rem;
+    }
+
+    .mini-stat {
+      padding: 0.95rem;
+      border-radius: 16px;
+      background: rgba(15, 91, 120, 0.05);
+      border: 1px solid rgba(15, 91, 120, 0.08);
+    }
+
+    .mini-stat-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    .priority-list {
+      display: grid;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    .priority-item {
+      padding: 0.9rem 1rem;
+      border-radius: 16px;
+      border: 1px solid rgba(215, 224, 234, 0.9);
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .password-wrap {
+      position: relative;
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0.2rem;
+    }
+
+    .password-wrap .form-control {
+      padding-right: 2.8rem;
+    }
+
+    .auth-link-btn {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      color: var(--primary);
+      font-size: 0.92rem;
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 0.14em;
+    }
+
+    .auth-link-btn:hover {
+      color: var(--secondary);
+    }
+
+    .syllabus-list {
+      display: grid;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    .syllabus-item {
+      padding: 0.9rem 1rem;
+      border-radius: 16px;
+      border: 1px solid rgba(215, 224, 234, 0.9);
+      background: rgba(255, 255, 255, 0.8);
+    }
+
+    .syllabus-kpi-grid,
+    .daily-feed {
+      display: grid;
+      gap: 0.85rem;
+      margin-top: 1rem;
+    }
+
+    .syllabus-kpi-grid {
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .syllabus-kpi {
+      padding: 1rem;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(15, 91, 120, 0.08), rgba(255, 255, 255, 0.95));
+      border: 1px solid rgba(15, 91, 120, 0.12);
+    }
+
+    .syllabus-kpi strong {
+      display: block;
+      font-size: 1.6rem;
+      margin-top: 0.15rem;
+    }
+
+    .delivery-strip {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(15, 91, 120, 0.08);
+      overflow: hidden;
+      margin-top: 0.8rem;
+    }
+
+    .delivery-strip span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--secondary), var(--accent));
+    }
+
+    .daily-feed-item {
+      padding: 1rem;
+      border-radius: 18px;
+      border: 1px solid rgba(215, 224, 234, 0.9);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(238, 243, 248, 0.88));
+    }
+
+    .pulse-grid {
+      display: grid;
+      gap: 0.8rem;
+    }
+
+    .pulse-card {
+      padding: 0.95rem 1rem;
+      border-radius: 18px;
+      border: 1px solid rgba(215, 224, 234, 0.9);
+      background: rgba(255, 255, 255, 0.82);
+    }
+
+    @media (max-width: 991px) {
+      .auth-wrap {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        width: 100%;
+        border-radius: 0 0 24px 24px;
+      }
+
+      .main-content {
+        margin-left: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="authShell" class="auth-shell">
+    <div class="auth-wrap">
+      <section class="hero-panel">
+        <span class="hero-chip">ESP32 + Firebase Realtime Database + Firebase Auth</span>
+        <h1 class="display-6 fw-bold">Smart Classroom Management Platform</h1>
+        <p class="mt-3 mb-0">Fingerprint attendance, OTP fallback, servo lock control, live classroom monitoring, syllabus tracking, event scheduling, and analytics for Student, Faculty, CC, Admin, and HOD.</p>
+        <div class="hero-grid">
+          <div class="hero-tile"><div class="fw-semibold">Attendance Stack</div><div class="small mt-1">Fingerprint scan, IR presence, OTP fallback, Firebase logging.</div></div>
+          <div class="hero-tile"><div class="fw-semibold">Hardware Control</div><div class="small mt-1">Open class, end lecture, short break, emergency, seminar, half day.</div></div>
+          <div class="hero-tile"><div class="fw-semibold">Academic Ops</div><div class="small mt-1">Timetable approval, event scheduling, syllabus progress, workload analytics.</div></div>
+          <div class="hero-tile"><div class="fw-semibold">Realtime Panels</div><div class="small mt-1">Door status, lecture status, students inside, alerts, and live command state.</div></div>
+        </div>
+      </section>
+
+      <section class="form-panel">
+        <ul class="nav nav-pills mb-3">
+          <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#loginPane" type="button">Login</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#signupPane" type="button">Signup</button></li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="loginPane">
+            <h3 class="h4 mb-3">Role Login</h3>
+            <div class="row g-3">
+              <div class="col-12"><label class="form-label" for="loginEmail">Email or Username</label><input id="loginEmail" class="form-control" type="text" placeholder="Enter email or username"></div>
+              <div class="col-12">
+                <label class="form-label" for="loginPassword">Password</label>
+                <div class="password-wrap">
+                  <input id="loginPassword" class="form-control" type="password" placeholder="Enter password">
+                  <button class="password-toggle" type="button" data-password-toggle="loginPassword" aria-label="Show password">Show</button>
+                </div>
+              </div>
+              <div class="col-12 text-end">
+                <button id="forgotPasswordBtn" class="auth-link-btn" type="button" aria-label="Reset password">Forgot Password?</button>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="loginRole">Expected Role</label>
+                <select id="loginRole" class="form-select">
+                  <option value="student">Student</option>
+                  <option value="faculty">Faculty</option>
+                  <option value="admin">Admin</option>
+                  <option value="cc">CC</option>
+                  <option value="hod">HOD</option>
+                </select>
+                <div class="small-note mt-2">Use CC role for class coordinator login and class-level coordination.</div>
+              </div>
+              <div class="col-12"><button id="loginBtn" class="btn btn-dark w-100">Sign In</button></div>
+            </div>
+            <div id="loginMessage" class="small-note mt-3"></div>
+          </div>
+
+          <div class="tab-pane fade" id="signupPane">
+            <h3 class="h4 mb-3">Create Account</h3>
+            <div class="row g-3">
+              <div class="col-md-6"><label class="form-label" for="signupName">Name</label><input id="signupName" class="form-control" type="text" placeholder="Full name"></div>
+              <div class="col-md-6"><label class="form-label" for="signupEmail">Email</label><input id="signupEmail" class="form-control" type="email" placeholder="name@example.com"></div>
+              <div class="col-md-6"><label class="form-label" for="signupUsername">Username</label><input id="signupUsername" class="form-control" type="text" placeholder="Preferred username"></div>
+              <div class="col-md-6">
+                <label class="form-label" for="signupPassword">Password</label>
+                <div class="password-wrap">
+                  <input id="signupPassword" class="form-control" type="password" placeholder="Create password">
+                  <button class="password-toggle" type="button" data-password-toggle="signupPassword" aria-label="Show password">Show</button>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="signupRole">Role</label>
+                <select id="signupRole" class="form-select">
+                  <option value="student">Student</option>
+                  <option value="faculty">Faculty</option>
+                  <option value="admin">Admin</option>
+                  <option value="cc">CC</option>
+                  <option value="hod">HOD</option>
+                </select>
+              </div>
+              <div class="col-md-4"><label class="form-label" for="signupDepartment">Department</label><input id="signupDepartment" class="form-control" type="text" placeholder="Department"></div>
+              <div id="signupClassGroup" class="col-md-4">
+                <label class="form-label" for="signupClass">Class</label>
+                <select id="signupClass" class="form-select">
+                  <option value="SY">SY</option>
+                  <option value="TY">TY</option>
+                  <option value="BE">BE</option>
+                  <option value="CSE-A">CSE-A</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="signupFingerprint">Fingerprint Enrollment ID</label>
+                <input id="signupFingerprint" class="form-control" type="text" placeholder="Scan or enter fingerprint ID">
+                <div id="fingerprintHint" class="small-note mt-2">If this ID already exists in Firebase, stored name and role will be auto-filled.</div>
+              </div>
+              <div class="col-12"><button id="signupBtn" class="btn btn-primary w-100">Create Account</button></div>
+            </div>
+            <div id="signupMessage" class="small-note mt-3"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="appShell" class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="small text-uppercase text-white-50">Smart Classroom</div>
+        <h4 class="mb-0">Control Center</h4>
+        <div class="small text-white-50 mt-2" id="sidebarUser">Guest</div>
+      </div>
+      <nav class="nav flex-column">
+        <a class="nav-link smart-link active" href="#" data-view="dashboard">Dashboard</a>
+        <a class="nav-link smart-link" href="#" data-view="attendance">Attendance</a>
+        <a class="nav-link smart-link" href="#" data-view="timetable">Timetable</a>
+        <a class="nav-link smart-link" href="#" data-view="events">Events</a>
+        <a class="nav-link smart-link" href="#" data-view="analytics">Analytics</a>
+        <a class="nav-link smart-link" href="#" data-view="control">Control</a>
+        <a class="nav-link smart-link" href="#" data-view="monitoring">Monitoring</a>
+        <a class="nav-link smart-link" href="#" data-view="alerts">Alerts</a>
+        <a class="nav-link smart-link" href="#" data-view="settings">Settings</a>
+        <a class="nav-link smart-link mt-3" href="#" id="logoutBtn">Logout</a>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <div class="small-note">Firebase connected control panel</div>
+          <h2 class="h3 mb-0" id="pageTitle">Dashboard</h2>
+        </div>
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+          <span class="badge text-bg-light" id="roleBadge">Role</span>
+          <span class="badge text-bg-light" id="classBadge">Class</span>
+          <span class="badge text-bg-light" id="departmentBadge">Department</span>
+        </div>
+      </header>
+
+      <section id="view-dashboard" class="section-view active">
+        <div class="row g-3 mb-3" id="dashboardMetrics"></div>
+        <div class="row g-3">
+          <div class="col-lg-8">
+            <div class="panel-card h-100">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                  <h3 class="h5 mb-1">Role Dashboard</h3>
+                  <div class="small-note" id="roleSummary">Waiting for data.</div>
+                </div>
+                <span class="status-pill" id="lectureBadge">Idle</span>
+              </div>
+              <div id="roleDashboardBody"></div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="panel-card"><h3 class="h5">Realtime Classroom Status</h3><div id="monitorMini" class="small-note mt-3"></div></div>
+            <div class="panel-card dashboard-quick-panel">
+              <div class="d-flex justify-content-between align-items-center gap-2">
+                <div>
+                  <h3 class="h5 mb-1">Pinned Quick Access</h3>
+                  <div class="small-note">Pin commands from the control panel to show them here.</div>
+                </div>
+              </div>
+              <div class="quick-grid mt-3" id="dashboardPinnedCommands"></div>
+            </div>
+          </div>
+        </div>
+        <div class="row g-3 mt-1">
+          <div class="col-lg-7">
+            <div class="panel-card">
+              <h3 class="h5 mb-1">Classroom Session Timeline</h3>
+              <div class="small-note">Live operational story from entry control to attendance confidence.</div>
+              <div id="dashboardTimeline" class="timeline-list"></div>
+            </div>
+          </div>
+          <div class="col-lg-5">
+            <div class="panel-card">
+              <h3 class="h5 mb-1">Operational Intelligence</h3>
+              <div class="small-note">Device health, attendance trust, and syllabus risk signals.</div>
+              <div id="dashboardOpsBoard"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-attendance" class="section-view">
+        <div class="row g-3 mb-3">
+          <div class="col-lg-3">
+            <div class="panel-card" id="attendanceClassPanel">
+              <label class="form-label" for="attendanceClassSelect">Select Class</label>
+              <select id="attendanceClassSelect" class="form-select"></select>
+            </div>
+          </div>
+          <div class="col-lg-9">
+            <div class="panel-card" id="attendanceExportPanel">
+              <div class="d-flex flex-wrap gap-2 align-items-end">
+                <div>
+                  <label class="form-label mb-1" for="attendanceExportMonths">Months</label>
+                  <select id="attendanceExportMonths" class="form-select">
+                    <option value="1">1 month</option>
+                    <option value="2">2 months</option>
+                    <option value="3" selected>3 months</option>
+                    <option value="4">4 months</option>
+                    <option value="5">5 months</option>
+                    <option value="6">6 months</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label mb-1" for="attendanceExportFormat">Format</label>
+                  <select id="attendanceExportFormat" class="form-select">
+                    <option value="pdf">PDF</option>
+                    <option value="xls">XLS Sheet</option>
+                  </select>
+                </div>
+                <button id="attendanceExportBtn" class="btn btn-outline-primary">
+                  <span aria-hidden="true">&#128190;</span> Download Attendance
+                </button>
+              </div>
+              <div id="attendanceExportHint" class="small-note mt-2">Download month-wise attendance and overall attendance summary.</div>
+            </div>
+          </div>
+        </div>
+        <div class="row g-3 mb-3" id="attendanceMetrics"></div>
+        <div class="row g-3">
+          <div class="col-lg-4"><div class="panel-card h-100"><h3 class="h5">Attendance Breakdown</h3><div class="row g-2 mt-1" id="attendanceBreakdown"></div></div></div>
+          <div class="col-lg-8">
+            <div class="panel-card h-100">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div><h3 class="h5 mb-1" id="attendanceTableTitle">Student Details</h3><div class="small-note" id="attendanceTableSub">Click a tile to filter students.</div></div>
+                <span class="small-note" id="facultyLabel">Faculty: -</span>
+              </div>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Roll No</th><th>Name</th><th>Status</th><th>Time</th></tr></thead>
+                  <tbody id="attendanceTableBody"><tr><td colspan="4">No data loaded.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row g-3 mt-1">
+          <div class="col-lg-5">
+            <div class="panel-card">
+              <h3 class="h5 mb-1">Attendance Trust Score</h3>
+              <div class="small-note">Derived from timing consistency and attendance status.</div>
+              <div id="attendanceTrustBoard"></div>
+            </div>
+          </div>
+          <div class="col-lg-7">
+            <div class="panel-card">
+              <h3 class="h5 mb-1">Dispute Readiness Board</h3>
+              <div class="small-note">Records that may need faculty review before they become complaints.</div>
+              <div id="attendanceDisputeBoard"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-timetable" class="section-view">
+        <div class="row g-3">
+          <div class="col-lg-8">
+            <div class="panel-card">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3 class="h5 mb-0" id="timetableTitle">Today's Timetable</h3>
+                <div class="d-flex align-items-center gap-2">
+                  <select id="timetableSuggestionMode" class="form-select form-select-sm" style="display:none; min-width: 210px;">
+                    <option value="with-practical">Suggested with practical</option>
+                    <option value="without-practical">Suggested without practical</option>
+                  </select>
+                  <span class="small-note" id="timetableClassLabel"></span>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Time</th><th>Subject</th><th>Faculty</th><th>Classroom</th></tr></thead>
+                  <tbody id="timetableBody"></tbody>
+                </table>
+              </div>
+              <div id="timetablePlanNote" class="small-note mt-3"></div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="panel-card mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3 class="h5 mb-0">Approval</h3>
+                <button id="toggleTimetableFormBtn" class="btn btn-outline-primary btn-sm icon-btn" type="button"><span aria-hidden="true">&#65291;</span><span>Add Manually</span></button>
+              </div>
+              <div class="small-note mb-3">HOD can review the suggested full-day timetable and add entries manually when needed.</div>
+              <button id="approveTimetableBtn" class="btn btn-outline-dark w-100">Approve Current Class Timetable</button>
+              <div id="timetableApprovalStatus" class="small-note mt-3"></div>
+            </div>
+            <div class="panel-card" id="timetableFormPanel" style="display:none;">
+              <h3 class="h5 mb-3">Add Timetable Entry</h3>
+              <div class="row g-2">
+                <div class="col-12"><input id="timetableSubject" class="form-control" placeholder="Subject"></div>
+                <div class="col-12"><input id="timetableFaculty" class="form-control" placeholder="Faculty"></div>
+                <div class="col-12"><input id="timetableRoom" class="form-control" placeholder="Classroom"></div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" for="timetableStart">Start time</label>
+                  <div class="input-group">
+                    <span class="input-group-text time-icon" aria-hidden="true">&#128339;</span>
+                    <input id="timetableStart" class="form-control" inputmode="numeric" placeholder="09:00">
+                    <select id="timetableStartPeriod" class="form-select">
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" for="timetableEnd">End time</label>
+                  <div class="input-group">
+                    <span class="input-group-text time-icon" aria-hidden="true">&#128339;</span>
+                    <input id="timetableEnd" class="form-control" inputmode="numeric" placeholder="10:00">
+                    <select id="timetableEndPeriod" class="form-select">
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="col-12"><button id="saveTimetableBtn" class="btn btn-primary w-100">Save Timetable Entry</button></div>
+              </div>
+              <div id="timetableMessage" class="small-note mt-3"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-events" class="section-view">
+        <div class="row g-3">
+          <div class="col-lg-4">
+            <div class="panel-card" id="eventFormPanel">
+              <h3 class="h5">Schedule Event</h3>
+              <div class="row g-2 mt-1">
+                <div class="col-12"><select id="eventType" class="form-select"><option>Seminar</option><option>Workshop</option><option>Guest Lecture</option><option>Half Day</option><option>Lecture End</option></select></div>
+                <div class="col-12"><input id="eventClassroom" class="form-control" value="CSE-A" placeholder="Classroom"></div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" for="eventStart">Start time</label>
+                  <div class="input-group">
+                    <span class="input-group-text time-icon" aria-hidden="true">&#128339;</span>
+                    <input id="eventStart" class="form-control" inputmode="numeric" placeholder="09:00">
+                    <select id="eventStartPeriod" class="form-select">
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" for="eventEnd">End time</label>
+                  <div class="input-group">
+                    <span class="input-group-text time-icon" aria-hidden="true">&#128339;</span>
+                    <input id="eventEnd" class="form-control" inputmode="numeric" placeholder="10:00">
+                    <select id="eventEndPeriod" class="form-select">
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="col-12"><button id="eventBtn" class="btn btn-primary w-100">Add Event</button></div>
+              </div>
+              <div id="eventMessage" class="small-note mt-3"></div>
+            </div>
+          </div>
+          <div class="col-lg-8">
+            <div class="panel-card">
+              <h3 class="h5 mb-3">Scheduled Events</h3>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Type</th><th>Classroom</th><th>Start</th><th>End</th><th>Approved By</th><th>Status</th></tr></thead>
+                  <tbody id="eventsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-analytics" class="section-view">
+        <div class="row g-3">
+          <div class="col-lg-6"><div class="panel-card"><h3 class="h5">Attendance Percentage</h3><canvas id="attendanceChart" height="180"></canvas></div></div>
+          <div class="col-lg-6"><div class="panel-card"><h3 class="h5">Syllabus Progress</h3><canvas id="syllabusChart" height="180"></canvas></div></div>
+          <div class="col-lg-6"><div class="panel-card"><h3 class="h5">Faculty Workload</h3><canvas id="workloadChart" height="180"></canvas></div></div>
+          <div class="col-lg-6"><div class="panel-card"><h3 class="h5">Lecture Completion</h3><canvas id="completionChart" height="180"></canvas></div></div>
+        </div>
+        <div class="row g-3 mt-1">
+          <div class="col-12"><div class="panel-card"><h3 class="h5 mb-1">Daily Delivery KPI Board</h3><div class="small-note">Role-aware pacing, coverage, and syllabus backlog tracking inspired by executive BI dashboards.</div><div id="syllabusKpiGrid" class="syllabus-kpi-grid"></div></div></div>
+          <div class="col-lg-7"><div class="panel-card"><h3 class="h5 mb-1">Coverage Vs Plan</h3><div class="small-note">Actual progress against expected plan for current role scope.</div><canvas id="syllabusTimelineChart" height="180"></canvas></div></div>
+          <div class="col-lg-5"><div class="panel-card"><h3 class="h5 mb-1">Recent Daily Updates</h3><div class="small-note">Latest class and subject-level syllabus notes with blockers and delivery pace.</div><div id="dailySyllabusFeed" class="daily-feed"></div></div></div>
+          <div class="col-lg-6"><div class="panel-card"><h3 class="h5 mb-1">Predicted Syllabus Risk</h3><div class="small-note">Subjects with the highest likelihood of delay.</div><div id="riskPredictionBoard"></div></div></div>
+          <div class="col-lg-6"><div class="panel-card"><h3 class="h5 mb-1">Classroom Reliability</h3><div class="small-note">Operational quality snapshot from live monitoring and attendance confidence.</div><div id="reliabilityBoard"></div></div></div>
+        </div>
+      </section>
+
+      <section id="view-control" class="section-view">
+        <div class="panel-card mb-3"><h3 class="h5 mb-3">ESP32 Command Panel</h3><div class="quick-grid" id="controlCommands"></div></div>
+        <div class="panel-card"><h3 class="h5 mb-3">Command Feedback</h3><div id="controlStatus" class="small-note"></div></div>
+      </section>
+
+      <section id="view-monitoring" class="section-view">
+        <div class="row g-3 mb-3" id="monitorSummary"></div>
+        <div class="row g-3" id="monitorCards"></div>
+      </section>
+
+      <section id="view-alerts" class="section-view">
+        <div class="row g-3">
+          <div class="col-lg-4">
+            <div class="panel-card" id="alertFormPanel">
+              <h3 class="h5">Raise Alert</h3>
+              <div class="row g-2 mt-1">
+                <div class="col-12"><input id="alertTitle" class="form-control" placeholder="Alert title"></div>
+                <div class="col-12"><textarea id="alertMessageInput" class="form-control" rows="4" placeholder="Alert message"></textarea></div>
+                <div class="col-12"><select id="alertSeverity" class="form-select"><option value="info">Info</option><option value="warning">Warning</option><option value="critical">Critical</option></select></div>
+                <div class="col-12"><button id="alertBtn" class="btn btn-danger w-100">Create Alert</button></div>
+              </div>
+              <div id="alertFormMessage" class="small-note mt-3"></div>
+            </div>
+          </div>
+          <div class="col-lg-8">
+            <div class="panel-card">
+              <h3 class="h5 mb-3">System Alerts</h3>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Title</th><th>Message</th><th>Severity</th><th>Classroom</th><th>Created</th></tr></thead>
+                  <tbody id="alertsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-settings" class="section-view">
+        <div class="row g-3">
+          <div class="col-lg-4">
+            <div class="panel-card" id="otpPanel">
+              <h3 class="h5">Manual Attendance OTP</h3>
+              <div class="small-note mb-3">Students can enter the OTP shown on the classroom LCD if fingerprint fails.</div>
+              <button id="otpGenerateBtn" class="btn btn-dark w-100 mb-2">Generate OTP</button>
+              <input id="otpInput" class="form-control mb-2" placeholder="Enter OTP">
+              <button id="otpBtn" class="btn btn-outline-dark w-100">Submit OTP</button>
+              <div id="otpMessage" class="small-note mt-3"></div>
+            </div>
+            <div class="panel-card mt-3" id="syllabusPanel">
+              <h3 class="h5">Daily Syllabus Update</h3>
+              <div class="small-note mb-3">Faculty and coordinators can log daily coverage. HOD can review the same stream with pace and backlog visibility.</div>
+              <div class="row g-2 mt-1">
+                <div class="col-12"><input id="syllabusSubject" class="form-control" placeholder="Subject name"></div>
+                <div class="col-12"><input id="syllabusCode" class="form-control" placeholder="Subject code"></div>
+                <div class="col-6"><input id="syllabusUnit" class="form-control" placeholder="Unit / Module"></div>
+                <div class="col-6"><input id="syllabusProgress" class="form-control" type="number" min="0" max="100" placeholder="Progress %"></div>
+                <div class="col-12"><input id="syllabusTopic" class="form-control" placeholder="Current topic"></div>
+                <div class="col-6"><input id="syllabusFaculty" class="form-control" placeholder="Faculty name"></div>
+                <div class="col-6"><input id="syllabusSemester" class="form-control" placeholder="Semester / Class"></div>
+                <div class="col-6"><input id="syllabusStartDate" class="form-control" type="date"></div>
+                <div class="col-6"><input id="syllabusTargetDate" class="form-control" type="date"></div>
+                <div class="col-6"><input id="syllabusSessionDate" class="form-control" type="date"></div>
+                <div class="col-6"><input id="syllabusCoveredToday" class="form-control" type="number" min="0" max="100" placeholder="Covered today %"></div>
+                <div class="col-12">
+                  <select id="syllabusPace" class="form-select">
+                    <option value="On Track">On Track</option>
+                    <option value="Fast">Fast</option>
+                    <option value="Watch">Watch</option>
+                    <option value="Delayed">Delayed</option>
+                  </select>
+                </div>
+                <div class="col-12"><textarea id="syllabusNotes" class="form-control" rows="3" placeholder="Coverage details, practical work, revisions, or remarks"></textarea></div>
+                <div class="col-12"><textarea id="syllabusBlockers" class="form-control" rows="2" placeholder="Pending topics, blockers, or support needed"></textarea></div>
+                <div class="col-12"><button id="syllabusBtn" class="btn btn-primary w-100">Save Daily Syllabus Update</button></div>
+              </div>
+              <div id="syllabusMessage" class="small-note mt-3"></div>
+              <div id="syllabusList" class="syllabus-list"></div>
+            </div>
+            <div class="panel-card mt-3" id="feedbackStudentPanel">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3 class="h5 mb-0">Student Feedback</h3>
+                <button id="feedbackToggleBtn" class="btn btn-outline-primary btn-sm" type="button">Open Form</button>
+              </div>
+              <div id="feedbackStudentStatus" class="small-note mb-3"></div>
+              <div id="feedbackStudentForm" style="display:none;">
+                <div id="feedbackPrompt" class="small-note mb-3"></div>
+                <div id="feedbackSuggestions" class="small-note mb-3"></div>
+                <div id="feedbackSubjectCount" class="small-note mb-3"></div>
+                <div id="feedbackSubjectForms" class="row g-3"></div>
+                <div class="mt-3"><button id="feedbackSubmitBtn" class="btn btn-primary w-100">Submit Feedback</button></div>
+              </div>
+              <div id="feedbackStudentMessage" class="small-note mt-3"></div>
+            </div>
+          </div>
+          <div class="col-lg-8">
+            <div class="panel-card mb-3" id="userMgmtPanel">
+              <h3 class="h5 mb-3">User Management</h3>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Class</th><th>Fingerprint ID</th></tr></thead>
+                  <tbody id="usersBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel-card mb-3" id="feedbackControlPanel">
+              <h3 class="h5 mb-3">Feedback Control</h3>
+              <div class="row g-2">
+                <div class="col-12"><select id="feedbackEnabled" class="form-select"><option value="true">Feedback Active</option><option value="false">Feedback Inactive</option></select></div>
+                <div class="col-12"><input id="feedbackFormTitle" class="form-control" placeholder="Feedback form title"></div>
+                <div class="col-12"><textarea id="feedbackFormPrompt" class="form-control" rows="3" placeholder="Prompt for students"></textarea></div>
+                <div class="col-12"><textarea id="feedbackSuggestionsInput" class="form-control" rows="3" placeholder="Suggested topics, comma separated"></textarea></div>
+                <div class="col-12"><button id="feedbackConfigBtn" class="btn btn-primary w-100">Save Feedback Settings</button></div>
+              </div>
+              <div id="feedbackControlMessage" class="small-note mt-3"></div>
+            </div>
+            <div class="panel-card mb-3" id="facultySyllabusPanel">
+              <h3 class="h5 mb-3">Faculty Syllabus Progress And Speed</h3>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Faculty</th><th>Subject</th><th>Progress</th><th>Speed</th><th>Target</th></tr></thead>
+                  <tbody id="facultySyllabusBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel-card mb-3" id="dailySyllabusPanel">
+              <h3 class="h5 mb-1">Daily Syllabus Monitoring</h3>
+              <div class="small-note mb-3">Recent updates with daily coverage, backlog, and pace markers for operational monitoring.</div>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Date</th><th>Subject</th><th>Faculty</th><th>Class</th><th>Covered</th><th>Progress</th><th>Pace</th></tr></thead>
+                  <tbody id="dailySyllabusBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel-card mb-3" id="feedbackReviewPanel">
+              <h3 class="h5 mb-3">Student Feedback Review</h3>
+              <div id="feedbackReviewNote" class="small-note mb-3">Anonymous feedback responses for HOD and CC review.</div>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Response No</th><th>Class</th><th>Subject</th><th>Faculty</th><th>Rating</th><th>Feedback</th><th>Time</th></tr></thead>
+                  <tbody id="feedbackReviewBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel-card" id="activityLogPanel">
+              <h3 class="h5 mb-3">Activity Log</h3>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Action</th><th>Actor</th><th>Role</th><th>Timestamp</th></tr></thead>
+                  <tbody id="activityBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script>
+    const state = {
+      apiBase: "",
+      firebaseConfig: null,
+      firebaseEnabled: false,
+      firebaseApp: null,
+      firebaseAuth: null,
+      token: "",
+      user: null,
+      dashboard: null,
+      monitoring: [],
+      analytics: null,
+      alertItems: [],
+      attendanceSummary: null,
+      attendanceStudents: [],
+      feedbackConfig: null,
+      feedbackEntries: [],
+      currentView: "dashboard",
+      attendanceClass: "SY",
+      attendanceFilter: "present",
+      pinnedCommands: [],
+      timetableFormOpen: false,
+      timetableSuggestionMode: "with-practical",
+      timetablePlanMeta: null,
+      timetableApproval: null,
+      odRequests: [],
+      charts: {},
+      refreshTimer: null
+    };
+
+    const COMMAND_BUTTONS = [
+      ["open_class", "Open Class"],
+      ["end_lecture", "End Lecture"],
+      ["short_break", "Short Break"],
+      ["emergency", "Emergency Alert"],
+      ["generate_otp", "Generate OTP"],
+      ["start_seminar", "Start Seminar"],
+      ["half_day", "Half Day"]
+    ];
+
+    const ROLE_VIEW_CONFIG = {
+      student: ["dashboard", "attendance", "timetable", "events", "alerts", "settings"],
+      faculty: ["dashboard", "attendance", "timetable", "analytics", "control", "monitoring", "alerts", "settings"],
+      cc: ["dashboard", "attendance", "timetable", "events", "analytics", "alerts", "settings"],
+      hod: ["dashboard", "attendance", "timetable", "events", "analytics", "control", "monitoring", "alerts", "settings"],
+      admin: ["dashboard", "attendance", "timetable", "events", "analytics", "control", "monitoring", "alerts", "settings"]
+    };
+
+    const els = {};
+
+    function bindEls() {
+      [
+        "authShell", "appShell", "loginEmail", "loginPassword", "loginRole", "loginBtn", "forgotPasswordBtn", "loginMessage",
+        "signupName", "signupEmail", "signupUsername", "signupPassword", "signupRole", "signupDepartment",
+        "signupClass", "signupClassGroup", "signupFingerprint", "signupBtn", "signupMessage", "fingerprintHint", "sidebarUser",
+        "roleBadge", "classBadge", "departmentBadge", "pageTitle", "dashboardMetrics", "roleSummary",
+        "roleDashboardBody", "lectureBadge", "quickCommands", "attendanceClassPanel", "attendanceClassSelect", "attendanceMetrics",
+        "attendanceBreakdown", "attendanceTableBody", "attendanceTableTitle", "attendanceTableSub", "facultyLabel", "attendanceExportPanel",
+        "attendanceExportMonths", "attendanceExportFormat", "attendanceExportBtn", "attendanceExportHint", "dashboardTimeline",
+        "dashboardOpsBoard", "dashboardPinnedCommands", "attendanceTrustBoard", "attendanceDisputeBoard",
+        "timetableTitle", "timetableSuggestionMode", "timetableBody", "timetableClassLabel", "timetablePlanNote", "approveTimetableBtn", "timetableApprovalStatus", "toggleTimetableFormBtn", "timetableFormPanel",
+        "timetableSubject", "timetableFaculty", "timetableRoom", "timetableStart", "timetableStartPeriod", "timetableEnd", "timetableEndPeriod",
+        "saveTimetableBtn", "timetableMessage", "eventType", "eventClassroom", "eventStart",
+        "eventStartPeriod", "eventEnd", "eventEndPeriod", "eventBtn", "eventMessage", "eventFormPanel", "eventsBody", "controlCommands", "controlStatus", "monitorCards",
+        "monitorMini", "monitorSummary", "alertTitle", "alertMessageInput", "alertSeverity", "alertBtn", "alertFormMessage",
+        "alertFormPanel", "alertsBody", "otpGenerateBtn", "otpInput", "otpBtn", "otpMessage", "syllabusSubject", "syllabusCode", "syllabusUnit",
+        "syllabusTopic", "syllabusFaculty", "syllabusSemester", "syllabusStartDate", "syllabusTargetDate", "syllabusProgress", "syllabusNotes",
+        "syllabusSessionDate", "syllabusCoveredToday", "syllabusPace", "syllabusBlockers",
+        "syllabusBtn", "syllabusMessage", "syllabusList", "otpPanel", "syllabusPanel", "feedbackStudentPanel", "feedbackToggleBtn", "feedbackStudentStatus",
+        "feedbackStudentForm", "feedbackPrompt", "feedbackSuggestions", "feedbackSubjectCount", "feedbackSubjectForms", "feedbackSubmitBtn", "feedbackStudentMessage",
+        "userMgmtPanel", "feedbackControlPanel", "feedbackEnabled", "feedbackFormTitle", "feedbackFormPrompt", "feedbackSuggestionsInput", "feedbackConfigBtn", "feedbackControlMessage",
+        "facultySyllabusPanel", "facultySyllabusBody", "dailySyllabusPanel", "dailySyllabusBody", "feedbackReviewPanel", "feedbackReviewBody", "feedbackReviewNote", "activityLogPanel", "usersBody", "activityBody", "logoutBtn",
+        "riskPredictionBoard", "reliabilityBoard", "syllabusKpiGrid", "dailySyllabusFeed", "syllabusTimelineChart"
+      ].forEach((id) => {
+        els[id] = document.getElementById(id);
+      });
+    }
+
+    function wirePasswordToggles() {
+      document.querySelectorAll("[data-password-toggle]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const input = document.getElementById(button.dataset.passwordToggle);
+          if (!input) return;
+          const reveal = input.type === "password";
+          input.type = reveal ? "text" : "password";
+          button.textContent = reveal ? "Hide" : "Show";
+          button.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+        });
+      });
+    }
+
+    function getRoleViews(role = state.user?.role) {
+      return ROLE_VIEW_CONFIG[role] || ROLE_VIEW_CONFIG.student;
+    }
+
+    function canAccessView(view, role = state.user?.role) {
+      return getRoleViews(role).includes(view);
+    }
+
+    function normalizeTimeText(value) {
+      return String(value || "").replace(/\s+/g, " ").trim().toUpperCase();
+    }
+
+    function formatEventTime(value, period) {
+      const raw = normalizeTimeText(value);
+      if (!raw) return "";
+
+      const match = raw.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/);
+      if (!match) return "";
+
+      let hours = Number(match[1]);
+      const minutes = match[2];
+      const chosenPeriod = period || match[3] || "AM";
+
+      if (!Number.isFinite(hours) || hours < 0 || hours > 23) return "";
+      if (Number(minutes) > 59) return "";
+
+      if (match[3]) {
+        if (hours < 1 || hours > 12) return "";
+        return `${String(hours).padStart(2, "0")}:${minutes} ${match[3]}`;
+      }
+
+      if (hours === 0) hours = 12;
+      else if (hours > 12) hours -= 12;
+      if (hours < 1 || hours > 12) return "";
+      return `${String(hours).padStart(2, "0")}:${minutes} ${chosenPeriod}`;
+    }
+
+    function formatTimetableRange(startValue, startPeriod, endValue, endPeriod) {
+      const start = formatEventTime(startValue, startPeriod);
+      const end = formatEventTime(endValue, endPeriod);
+      if (!start || !end) return "";
+      return `${start} - ${end}`;
+    }
+
+    function sortTimetableRows(rows) {
+      return [...rows].sort((a, b) => getTimetableSortValue(a.time) - getTimetableSortValue(b.time));
+    }
+
+    function getTimetableSortValue(value) {
+      const start = String(value || "").split("-")[0].trim();
+      const match = start.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (!match) return Number.MAX_SAFE_INTEGER;
+      let hours = Number(match[1]) % 12;
+      if (match[3].toUpperCase() === "PM") hours += 12;
+      return (hours * 60) + Number(match[2]);
+    }
+
+    function getSemesterSubjects(className) {
+      const normalizedClass = String(className || "").trim().toUpperCase();
+      const syllabusSubjects = (state.analytics?.syllabus || [])
+        .filter((item) => String(item.semester || "").trim().toUpperCase() === normalizedClass)
+        .map((item) => ({
+          subject: item.subject,
+          faculty: item.faculty || "-"
+        }));
+
+      const timetableRows = [
+        ...(state.timetablePlanMeta?.className === className ? (state.timetablePlanMeta?.schedule || []) : []),
+        ...((state.dashboard?.timetable || []).filter((row) => normalizedClass === String(state.user?.className || state.user?.class || "").trim().toUpperCase()))
+      ];
+      const timetableSubjects = timetableRows
+        .filter((row) => !/(lunch break|break|seminar review)/i.test(String(row.subject || "")))
+        .map((row) => ({
+          subject: row.subject,
+          faculty: row.faculty || "-"
+        }));
+
+      const subjectMap = new Map();
+      [...syllabusSubjects, ...timetableSubjects].forEach((item) => {
+        const key = String(item.subject || "").trim().toLowerCase();
+        if (!key || subjectMap.has(key)) return;
+        subjectMap.set(key, item);
+      });
+      return [...subjectMap.values()];
+    }
+
+    function getDailySyllabusUpdates(item) {
+      const rows = Array.isArray(item?.dailyUpdates)
+        ? item.dailyUpdates
+        : item?.dailyUpdates && typeof item.dailyUpdates === "object"
+          ? Object.values(item.dailyUpdates)
+          : [];
+
+      return rows
+        .filter((entry) => entry && typeof entry === "object")
+        .sort((a, b) => {
+          const aDate = new Date(`${String(a.date || a.updatedAt || "1970-01-01").slice(0, 10)}T00:00:00`).getTime();
+          const bDate = new Date(`${String(b.date || b.updatedAt || "1970-01-01").slice(0, 10)}T00:00:00`).getTime();
+          if (bDate !== aDate) return bDate - aDate;
+          return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+        });
+    }
+
+    function computeSyllabusHealth(item) {
+      const updates = getDailySyllabusUpdates(item);
+      const latest = updates[0] || {};
+      const progress = Number(item?.progress ?? latest.progress ?? 0);
+      const expected = Number(item?.expectedProgress ?? 0);
+      const coveredToday = Number(item?.coveredToday ?? latest.coveredToday ?? 0);
+      const remaining = Number(item?.remaining ?? Math.max(0, 100 - progress));
+      const variance = Number(item?.varianceToPlan ?? (progress - expected));
+      const averageDailyCoverage = Number(item?.averageDailyCoverage ?? coveredToday);
+      let paceTone = item?.paceTone || latest.pace || "On Track";
+      if (!item?.paceTone) {
+        if (variance < -15) paceTone = "Delayed";
+        else if (variance < -5) paceTone = "Watch";
+        else if (variance > 8) paceTone = "Fast";
+      }
+
+      return {
+        progress,
+        expected,
+        coveredToday,
+        remaining,
+        variance,
+        averageDailyCoverage,
+        paceTone,
+        latest,
+        updates
+      };
+    }
+
+    function getAccessibleSyllabusItems(source = state.analytics?.syllabus || [], role = state.user?.role) {
+      const items = Array.isArray(source) ? source : [];
+      if (role === "faculty") {
+        const faculty = String(state.user?.name || "").trim().toLowerCase();
+        return items.filter((item) => String(item.faculty || "").trim().toLowerCase() === faculty);
+      }
+      if (role === "cc") {
+        const className = String(state.user?.className || state.user?.class || "").trim().toUpperCase();
+        return items.filter((item) => String(item.className || item.semester || "").trim().toUpperCase() === className);
+      }
+      return items;
+    }
+
+    function getRecentDailySyllabusFeed(items = getAccessibleSyllabusItems()) {
+      return items
+        .flatMap((item) => getDailySyllabusUpdates(item).map((update) => ({
+          subject: item.subject || "-",
+          faculty: item.faculty || update.faculty || "-",
+          className: item.className || item.semester || update.className || "-",
+          code: item.code || "-",
+          paceTone: update.pace || item.paceTone || "On Track",
+          coveredToday: Number(update.coveredToday || item.coveredToday || 0),
+          progress: Number(update.progress || item.progress || 0),
+          notes: update.notes || item.notes || "",
+          blockers: update.blockers || item.blockers || "",
+          date: update.date || item.lastSessionDate || item.updatedAt || "-"
+        })))
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+        .slice(0, 8);
+    }
+
+    function renderSyllabusPulse(items, emptyText) {
+      if (!items.length) return `<div class="small-note">${emptyText}</div>`;
+      return `<div class="pulse-grid">${items.slice(0, 4).map((item) => {
+        const health = computeSyllabusHealth(item);
+        const tone = health.paceTone === "Delayed" ? "bad" : health.paceTone === "Watch" ? "risky" : "good";
+        return `
+          <div class="pulse-card">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+              <div>
+                <div class="fw-semibold">${item.subject}</div>
+                <div class="small-note">${item.code || "-"} | ${item.className || item.semester || "-"}</div>
+              </div>
+              <span class="trust-pill ${tone}">${health.paceTone}</span>
+            </div>
+            <div class="mini-stat-grid mt-2">
+              <div class="mini-stat"><div class="metric-label">Covered</div><div class="mini-stat-value">${health.progress}%</div></div>
+              <div class="mini-stat"><div class="metric-label">Remaining</div><div class="mini-stat-value">${health.remaining}%</div></div>
+              <div class="mini-stat"><div class="metric-label">Today</div><div class="mini-stat-value">${health.coveredToday}%</div></div>
+            </div>
+            <div class="delivery-strip"><span style="width:${Math.max(4, Math.min(100, health.progress))}%"></span></div>
+          </div>
+        `;
+      }).join("")}</div>`;
+    }
+
+    function computeFacultySyllabusSpeed() {
+      return (state.analytics?.syllabus || [])
+        .map((item) => {
+          const health = computeSyllabusHealth(item);
+          return {
+            faculty: item.faculty || "-",
+            subject: item.subject || "-",
+            progress: health.progress,
+            targetDate: item.targetDate || "-",
+            speedLabel: `${Number(health.averageDailyCoverage || 0).toFixed(1)}% per day`,
+            paceTone: health.paceTone
+          };
+        })
+        .sort((a, b) => a.faculty.localeCompare(b.faculty) || b.progress - a.progress);
+    }
+
+    function renderFacultySyllabusSpeed() {
+      if (!els.facultySyllabusBody) return;
+      const rows = computeFacultySyllabusSpeed();
+      els.facultySyllabusBody.innerHTML = rows.length
+        ? rows.map((row) => `<tr><td>${row.faculty}</td><td>${row.subject}</td><td>${row.progress}%</td><td>${row.speedLabel} (${row.paceTone})</td><td>${row.targetDate}</td></tr>`).join("")
+        : "<tr><td colspan='5'>No syllabus analytics available.</td></tr>";
+    }
+
+    function renderFeedbackStudentPanel() {
+      if (!els.feedbackStudentPanel) return;
+      const config = state.feedbackConfig || { enabled: false, title: "Class Feedback", prompt: "", suggestions: [] };
+      const enabled = Boolean(config?.enabled);
+      const className = state.user?.className || state.user?.class || "";
+      const subjects = getSemesterSubjects(className);
+      els.feedbackStudentStatus.textContent = enabled
+        ? `${config.title} is active. Submit feedback when HOD requests it.`
+        : "Feedback form is currently disabled by HOD.";
+      els.feedbackPrompt.textContent = config?.prompt || "";
+      const suggestions = Array.isArray(config?.suggestions) ? config.suggestions : [];
+      els.feedbackSuggestions.textContent = suggestions.length ? `Suggested topics: ${suggestions.join(", ")}` : "";
+      els.feedbackSubjectCount.textContent = subjects.length
+        ? `Total subjects in ${className || "this semester"}: ${subjects.length}. Feedback will be submitted for all listed subjects.`
+        : "No semester subjects found for this class yet.";
+      els.feedbackSubjectForms.innerHTML = subjects.length
+        ? subjects.map((item, index) => `
+          <div class="col-12">
+            <div class="panel-card">
+              <div class="fw-semibold">${item.subject}</div>
+              <div class="small-note mb-2">${item.faculty}</div>
+              <select class="form-select mb-2" data-feedback-rating="${index}">
+                <option value="5">5 - Excellent</option>
+                <option value="4">4 - Good</option>
+                <option value="3">3 - Average</option>
+                <option value="2">2 - Slow</option>
+                <option value="1">1 - Needs support</option>
+              </select>
+              <textarea class="form-control" rows="3" data-feedback-comment="${index}" placeholder="Write feedback for ${item.subject}"></textarea>
+            </div>
+          </div>
+        `).join("")
+        : "<div class='col-12'><div class='small-note'>Feedback subjects will appear after the semester timetable or syllabus is configured.</div></div>";
+      els.feedbackToggleBtn.style.display = enabled ? "" : "none";
+      els.feedbackToggleBtn.textContent = els.feedbackStudentForm.style.display === "none" ? "Open Form" : "Close Form";
+      if (!enabled) {
+        els.feedbackStudentForm.style.display = "none";
+        els.feedbackToggleBtn.textContent = "Open Form";
+      }
+    }
+
+    function renderFeedbackControlPanel() {
+      if (!els.feedbackEnabled) return;
+      const config = state.feedbackConfig || { enabled: false, title: "Class Feedback", prompt: "", suggestions: [] };
+      els.feedbackEnabled.value = String(Boolean(config?.enabled));
+      els.feedbackFormTitle.value = config?.title || "";
+      els.feedbackFormPrompt.value = config?.prompt || "";
+      els.feedbackSuggestionsInput.value = Array.isArray(config?.suggestions) ? config.suggestions.join(", ") : "";
+    }
+
+    function resolveFeedbackFaculty(row, fallbackClass = "") {
+      const subjectKey = String(row?.subject || "").trim().toLowerCase();
+      if (!subjectKey) return "-";
+      const subjects = getSemesterSubjects(row?.className || fallbackClass);
+      const match = subjects.find((item) => String(item.subject || "").trim().toLowerCase() === subjectKey);
+      return match?.faculty || "-";
+    }
+
+    function getAnonymousFeedbackRows(rows, fallbackClass = "") {
+      return (rows || []).map((row, index) => ({
+        responseNo: `FB-${index + 1}`,
+        className: row.className || "-",
+        subject: row.subject || "-",
+        faculty: resolveFeedbackFaculty(row, fallbackClass),
+        rating: `${Number(row.rating || 0)}/5`,
+        comment: row.comment || "-",
+        time: row.createdAt || "-"
+      }));
+    }
+
+    function renderFeedbackReview() {
+      if (!els.feedbackReviewBody) return;
+      const role = state.user?.role || "";
+      const className = state.user?.className || state.user?.class || "";
+      const rows = (state.feedbackEntries || [])
+        .filter((row) => role !== "cc" || String(row.className || "").trim().toUpperCase() === String(className || "").trim().toUpperCase());
+      const anonymousRows = getAnonymousFeedbackRows(rows, className);
+      if (els.feedbackReviewNote) {
+        els.feedbackReviewNote.textContent = role === "cc"
+          ? `Class coordinator review for ${className}. Anonymous responses from this class are shown here.`
+          : "HOD can review anonymous feedback responses from all classes here.";
+      }
+      els.feedbackReviewBody.innerHTML = anonymousRows.length
+        ? anonymousRows.map((row) => `<tr><td>${row.responseNo}</td><td>${row.className}</td><td>${row.subject}</td><td>${row.faculty}</td><td>${row.rating}</td><td>${row.comment}</td><td>${row.time}</td></tr>`).join("")
+        : "<tr><td colspan='7'>No student feedback submitted.</td></tr>";
+    }
+
+    function setTimetableFormVisibility(open) {
+      state.timetableFormOpen = Boolean(open);
+      if (els.timetableFormPanel) els.timetableFormPanel.style.display = state.timetableFormOpen ? "" : "none";
+      if (els.toggleTimetableFormBtn) els.toggleTimetableFormBtn.innerHTML = state.timetableFormOpen
+        ? '<span aria-hidden="true">&times;</span><span>Close</span>'
+        : '<span aria-hidden="true">&#65291;</span><span>Add Manually</span>';
+    }
+
+    function getPinnedCommandsKey(role = state.user?.role || "guest") {
+      return `smartclass-pinned-commands-${role}`;
+    }
+
+    function loadPinnedCommands(role = state.user?.role) {
+      const allowed = new Set(COMMAND_BUTTONS.map(([command]) => command));
+      try {
+        const saved = JSON.parse(localStorage.getItem(getPinnedCommandsKey(role)) || "[]");
+        state.pinnedCommands = Array.isArray(saved) ? saved.filter((command) => allowed.has(command)) : [];
+      } catch (error) {
+        state.pinnedCommands = [];
+      }
+    }
+
+    function savePinnedCommands() {
+      localStorage.setItem(getPinnedCommandsKey(), JSON.stringify(state.pinnedCommands));
+    }
+
+    function isPinnedCommand(command) {
+      return state.pinnedCommands.includes(command);
+    }
+
+    function togglePinnedCommand(command) {
+      if (!command) return;
+      if (isPinnedCommand(command)) state.pinnedCommands = state.pinnedCommands.filter((item) => item !== command);
+      else state.pinnedCommands = [...state.pinnedCommands, command];
+      savePinnedCommands();
+      renderQuickCommands();
+      renderPinnedDashboardCommands();
+    }
+
+    function renderPinnedDashboardCommands() {
+      if (!els.dashboardPinnedCommands) return;
+      const commands = COMMAND_BUTTONS.filter(([command]) => state.pinnedCommands.includes(command));
+      const disabled = !["faculty", "admin", "hod"].includes(state.user?.role);
+
+      els.dashboardPinnedCommands.innerHTML = commands.length ? commands.map(([command, label]) => `
+        <div class="command-card">
+          <button type="button" class="pin-toggle active" data-pin-command="${command}">Pinned</button>
+          <button class="command-btn ${disabled ? "opacity-50" : ""}" data-command="${command}" ${disabled ? "disabled" : ""}>
+            <div class="fw-semibold">${label}</div>
+            <div class="small-note">${command}</div>
+          </button>
+        </div>
+      `).join("") : '<div class="small-note">No quick access pinned yet. Open the control panel and pin the commands you want on the dashboard.</div>';
+    }
+
+    function applyRoleAccess() {
+      const role = state.user?.role || "student";
+      const allowedViews = getRoleViews(role);
+
+      document.querySelectorAll(".smart-link[data-view]").forEach((link) => {
+        const allowed = allowedViews.includes(link.dataset.view);
+        link.style.display = allowed ? "" : "none";
+      });
+
+      if (!allowedViews.includes(state.currentView)) {
+        state.currentView = allowedViews[0];
+      }
+
+      document.querySelectorAll(".smart-link[data-view]").forEach((item) => {
+        item.classList.toggle("active", item.dataset.view === state.currentView);
+      });
+
+      document.querySelectorAll(".section-view").forEach((section) => {
+        section.classList.toggle("active", section.id === `view-${state.currentView}`);
+      });
+
+      els.pageTitle.textContent = state.currentView.charAt(0).toUpperCase() + state.currentView.slice(1);
+      els.attendanceClassPanel.style.display = role === "student" ? "none" : "";
+      els.attendanceExportPanel.style.display = role === "student" ? "none" : "";
+      els.eventFormPanel.style.display = ["admin", "hod", "cc"].includes(role) ? "" : "none";
+      els.alertFormPanel.style.display = ["admin", "hod"].includes(role) ? "" : "none";
+      els.otpPanel.style.display = role === "student" ? "" : "none";
+      els.syllabusPanel.style.display = ["faculty", "cc", "admin", "hod"].includes(role) ? "" : "none";
+      els.feedbackStudentPanel.style.display = role === "student" ? "" : "none";
+      els.userMgmtPanel.style.display = ["admin", "hod"].includes(role) ? "" : "none";
+      els.feedbackControlPanel.style.display = role === "hod" ? "" : "none";
+      els.facultySyllabusPanel.style.display = role === "hod" ? "" : "none";
+      els.dailySyllabusPanel.style.display = ["faculty", "cc", "admin", "hod"].includes(role) ? "" : "none";
+      els.feedbackReviewPanel.style.display = ["hod", "cc"].includes(role) ? "" : "none";
+      els.activityLogPanel.style.display = ["admin", "hod"].includes(role) ? "" : "none";
+      els.approveTimetableBtn.style.display = ["faculty", "admin", "hod", "cc"].includes(role) ? "" : "none";
+      els.toggleTimetableFormBtn.style.display = ["admin", "hod", "cc"].includes(role) ? "" : "none";
+      els.timetableSuggestionMode.style.display = role === "hod" ? "" : "none";
+      if (!["admin", "hod", "cc"].includes(role)) setTimetableFormVisibility(false);
+    }
+
+    function filterAttendanceRows(rows, filter) {
+      if (!filter || filter === "total") return rows;
+      const normalized = String(filter).toLowerCase();
+      return rows.filter((row) => {
+        const status = String(row.status || "").toLowerCase();
+        if (normalized === "present") return ["present", "late mark", "on duty"].includes(status);
+        if (normalized === "ontime") return status === "present";
+        if (normalized === "latemark") return status === "late mark";
+        if (normalized === "od") return status === "on duty";
+        return status === normalized;
+      });
+    }
+
+    function formatOdDate(value) {
+      if (!value) return "-";
+      const date = new Date(`${value}T00:00:00`);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+    }
+
+    async function resolveApiBase() {
+      const candidates = [...new Set([window.location.origin, "", "http://localhost:3000", "http://127.0.0.1:3000"])];
+      for (const candidate of candidates) {
+        try {
+          const response = await fetch(`${candidate}/api/health`, { cache: "no-store" });
+          if (!response.ok) continue;
+          const data = await response.json();
+          if (data.ok) return candidate;
+        } catch (error) {}
+      }
+      throw new Error("Cannot connect to backend. Start the server first.");
+    }
+
+    async function api(path, options = {}) {
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      if (state.token) headers.Authorization = `Bearer ${state.token}`;
+      const response = await fetch(`${state.apiBase}${path}`, { ...options, headers, cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
+
+    async function initFirebase() {
+      const configPayload = await api("/api/config");
+      state.firebaseConfig = configPayload.firebase || {};
+      const required = ["apiKey", "authDomain", "projectId", "appId"];
+      state.firebaseEnabled = required.every((key) => state.firebaseConfig[key]);
+      if (!state.firebaseEnabled || !window.firebase) return;
+      state.firebaseApp = firebase.initializeApp(state.firebaseConfig);
+      state.firebaseAuth = firebase.auth();
+    }
+
+    function setMessage(target, text, tone = "muted") {
+      target.textContent = text;
+      target.style.color = tone === "error" ? "#cb3a31" : tone === "ok" ? "#23825d" : "#62748a";
+    }
+
+    function isStrongPassword(value) {
+      const password = String(value || "");
+      return password.length >= 8 &&
+        /[A-Za-z]/.test(password) &&
+        /\d/.test(password) &&
+        /[^A-Za-z0-9]/.test(password);
+    }
+
+    function updateSignupRoleFields() {
+      const needsClass = ["student", "cc"].includes(els.signupRole.value);
+      els.signupClassGroup.style.display = needsClass ? "" : "none";
+      els.signupClass.disabled = !needsClass;
+      if (!needsClass) {
+        els.signupClass.value = "SY";
+      }
+    }
+
+    async function lookupFingerprint() {
+      const id = els.signupFingerprint.value.trim();
+      if (!id) return;
+      try {
+        const data = await api(`/api/fingerprint/${encodeURIComponent(id)}`);
+        if (!data.exists) {
+          setMessage(els.fingerprintHint, "Fingerprint ID not found in Firebase. New profile will be created.");
+          return;
+        }
+        els.signupName.value = data.user.name || els.signupName.value;
+        els.signupRole.value = data.user.role || els.signupRole.value;
+        updateSignupRoleFields();
+        els.signupDepartment.value = data.user.department || els.signupDepartment.value;
+        if ((data.user.role || "").toLowerCase() === "student") {
+          els.signupClass.value = data.user.className || els.signupClass.value;
+        }
+        setMessage(els.fingerprintHint, `Fingerprint matched. Auto-filled ${data.user.name} (${data.user.role}).`, "ok");
+      } catch (error) {
+        setMessage(els.fingerprintHint, error.message, "error");
+      }
+    }
+
+    async function handleSignup() {
+      const payload = {
+        name: els.signupName.value.trim(),
+        email: els.signupEmail.value.trim(),
+        username: els.signupUsername.value.trim(),
+        password: els.signupPassword.value,
+        role: els.signupRole.value,
+        department: els.signupDepartment.value.trim(),
+        className: ["student", "cc"].includes(els.signupRole.value) ? els.signupClass.value : "",
+        fingerprintEnrollmentId: els.signupFingerprint.value.trim()
+      };
+
+      if (!payload.name || !payload.email || !payload.password || !payload.department) {
+        setMessage(els.signupMessage, "Fill all required signup fields.", "error");
+        return;
+      }
+      if (!isStrongPassword(payload.password)) {
+        setMessage(els.signupMessage, "Password must be at least 8 characters and include alphabets, numbers, and special characters.", "error");
+        return;
+      }
+
+      try {
+        if (state.firebaseEnabled && state.firebaseAuth) {
+          const credential = await state.firebaseAuth.createUserWithEmailAndPassword(payload.email, payload.password);
+          const idToken = await credential.user.getIdToken();
+          await api("/api/auth/sync-profile", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify(payload)
+          });
+          setMessage(els.signupMessage, "Account created with Firebase Auth and synced to Realtime Database.", "ok");
+        } else {
+          await api("/api/auth/signup", { method: "POST", body: JSON.stringify(payload) });
+          setMessage(els.signupMessage, "Account created using backend fallback auth.", "ok");
+        }
+      } catch (error) {
+        setMessage(els.signupMessage, error.message, "error");
+      }
+    }
+
+    async function handleLogin() {
+      const identifier = els.loginEmail.value.trim();
+      const password = els.loginPassword.value;
+      const expectedRole = els.loginRole.value;
+      if (!identifier || !password) {
+        setMessage(els.loginMessage, "Enter email/username and password.", "error");
+        return;
+      }
+
+      try {
+        if (state.firebaseEnabled && state.firebaseAuth && identifier.includes("@")) {
+          const credential = await state.firebaseAuth.signInWithEmailAndPassword(identifier, password);
+          const idToken = await credential.user.getIdToken();
+          const session = await api("/api/auth/session", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ expectedRole })
+          });
+          state.token = session.token;
+          state.user = session.user;
+        } else {
+          const session = await api("/api/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ username: identifier, password, expectedRole })
+          });
+          state.token = session.token;
+          state.user = session.user;
+        }
+
+        els.authShell.style.display = "none";
+        els.appShell.style.display = "block";
+        await bootstrapApp();
+      } catch (error) {
+        setMessage(els.loginMessage, error.message, "error");
+      }
+    }
+
+    function renderMiniList(items, primaryKey, secondaryKey) {
+      if (!items.length) return '<div class="small-note">No data available.</div>';
+      return `<div class="list-group list-group-flush">${
+        items.slice(0, 6).map((item) => `
+          <div class="list-group-item px-0 d-flex justify-content-between">
+            <span>${item[primaryKey] ?? "-"}</span>
+            <span class="small-note">${item[secondaryKey] ?? "-"}</span>
+          </div>
+        `).join("")
+      }</div>`;
+    }
+
+    function renderMiniTable(rows, columns) {
+      if (!rows.length) return '<div class="small-note">No rows available.</div>';
+      return `<div class="table-responsive"><table class="table table-sm mb-0"><tbody>${
+        rows.slice(0, 6).map((row) => `<tr>${columns.map((column) => `<td>${row[column] ?? "-"}</td>`).join("")}</tr>`).join("")
+      }</tbody></table></div>`;
+    }
+
+    function renderMetrics(metrics) {
+      els.dashboardMetrics.innerHTML = Object.entries(metrics).map(([label, value]) => `
+        <div class="col-md-6 col-xl-3">
+          <div class="metric-card">
+            <div class="metric-label">${label}</div>
+            <div class="metric-value">${value}</div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function estimateTrustScore(row) {
+      let score = 55;
+      const status = String(row.status || "").toLowerCase();
+      const time = String(row.time || "").trim();
+
+      if (status.includes("on time") || status === "present") score += 30;
+      else if (status.includes("late")) score += 15;
+      else if (status.includes("absent")) score -= 20;
+      else if (status.includes("on duty")) score += 8;
+      else if (status.includes("leave")) score -= 8;
+
+      if (time.includes(":")) score += 10;
+      if (!time || time === "-") score -= 5;
+      return Math.max(0, Math.min(100, score));
+    }
+
+    function classifyScore(score) {
+      if (score >= 80) return { label: "High Trust", tone: "good" };
+      if (score >= 60) return { label: "Review", tone: "risky" };
+      return { label: "Low Trust", tone: "bad" };
+    }
+
+    function renderSessionTimeline() {
+      if (!els.dashboardTimeline) return;
+      const dashboard = state.dashboard || {};
+      const room = state.monitoring[0] || dashboard.monitor || {};
+      const summary = state.attendanceSummary || dashboard.summary || {};
+      const present = Number(summary.present || 0);
+      const total = Number(summary.total || 0);
+      const attendanceRate = total ? Math.round((present / total) * 100) : 0;
+      const alertsCount = (state.alertItems || []).length;
+
+      const steps = [
+        {
+          title: "Access Control",
+          detail: `Door ${room.doorStatus || "Unknown"} for ${room.classroom || state.attendanceClass}.`,
+          state: room.doorStatus && String(room.doorStatus).toLowerCase() !== "locked" ? "ok" : "warn"
+        },
+        {
+          title: "Lecture State",
+          detail: `${room.lectureStatus || dashboard.lectureStatus?.lectureStatus || "Idle"} lecture flow is active.`,
+          state: String(room.lectureStatus || dashboard.lectureStatus?.lectureStatus || "idle").toLowerCase() === "idle" ? "warn" : "ok"
+        },
+        {
+          title: "Attendance Capture",
+          detail: `${present}/${total || 0} students marked with ${attendanceRate}% capture confidence.`,
+          state: attendanceRate >= 75 ? "ok" : attendanceRate >= 50 ? "warn" : "danger"
+        },
+        {
+          title: "Alert Pressure",
+          detail: alertsCount ? `${alertsCount} active alerts need review.` : "No active classroom alerts.",
+          state: alertsCount === 0 ? "ok" : alertsCount <= 2 ? "warn" : "danger"
+        }
+      ];
+
+      els.dashboardTimeline.innerHTML = steps.map((step) => `
+        <div class="timeline-step ${step.state}">
+          <div class="d-flex gap-3">
+            <span class="timeline-dot"></span>
+            <div>
+              <div class="fw-semibold">${step.title}</div>
+              <div class="small-note mt-1">${step.detail}</div>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderOperationalIntelligence() {
+      if (!els.dashboardOpsBoard) return;
+      const students = state.attendanceStudents || [];
+      const trustScores = students.map(estimateTrustScore);
+      const avgTrust = trustScores.length ? Math.round(trustScores.reduce((sum, value) => sum + value, 0) / trustScores.length) : 0;
+      const riskySubjects = (state.analytics?.syllabus || [])
+        .map((item) => ({ subject: item.subject, risk: Math.max(0, 100 - Number(item.progress || 0)) }))
+        .sort((a, b) => b.risk - a.risk)
+        .slice(0, 3);
+      const rooms = state.monitoring || [];
+      const healthyRooms = rooms.filter((room) => room.doorStatus && room.lectureStatus).length;
+
+      els.dashboardOpsBoard.innerHTML = `
+        <div class="mini-stat-grid">
+          <div class="mini-stat"><div class="metric-label">Average Trust</div><div class="mini-stat-value">${avgTrust}%</div></div>
+          <div class="mini-stat"><div class="metric-label">Healthy Rooms</div><div class="mini-stat-value">${healthyRooms}/${rooms.length || 1}</div></div>
+          <div class="mini-stat"><div class="metric-label">Risk Subjects</div><div class="mini-stat-value">${riskySubjects.length}</div></div>
+        </div>
+        <div class="priority-list">
+          ${riskySubjects.length ? riskySubjects.map((item) => `
+            <div class="priority-item">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">${item.subject}</div>
+                <span class="trust-pill ${item.risk >= 55 ? "risky" : "good"}">${item.risk}% risk</span>
+              </div>
+              <div class="small-note mt-1">${item.risk >= 55 ? "Needs timetable correction and faculty follow-up." : "Progress is acceptable but should be tracked."}</div>
+            </div>
+          `).join("") : `<div class="priority-item"><div class="small-note">Analytics data will populate this board after refresh.</div></div>`}
+        </div>
+      `;
+    }
+
+    function renderAttendanceInsights() {
+      if (!els.attendanceTrustBoard || !els.attendanceDisputeBoard) return;
+      const students = state.attendanceStudents || [];
+      const trustRows = students
+        .map((row) => ({ ...row, trust: estimateTrustScore(row) }))
+        .sort((a, b) => a.trust - b.trust);
+
+      const avgTrust = trustRows.length ? Math.round(trustRows.reduce((sum, row) => sum + row.trust, 0) / trustRows.length) : 0;
+      const flagged = trustRows.filter((row) => row.trust < 60).length;
+      const disputed = trustRows.filter((row) => ["absent", "late mark", "leave"].includes(String(row.status || "").toLowerCase())).slice(0, 6);
+
+      els.attendanceTrustBoard.innerHTML = `
+        <div class="mini-stat-grid">
+          <div class="mini-stat"><div class="metric-label">Class Trust</div><div class="mini-stat-value">${avgTrust}%</div></div>
+          <div class="mini-stat"><div class="metric-label">Flagged Records</div><div class="mini-stat-value">${flagged}</div></div>
+        </div>
+        <div class="signal-list">
+          ${trustRows.slice(0, 5).map((row) => {
+            const level = classifyScore(row.trust);
+            return `
+              <div class="signal-item">
+                <div>
+                  <div class="fw-semibold">${row.name}</div>
+                  <div class="small-note">${row.rollNo} • ${row.status} • ${row.time}</div>
+                </div>
+                <span class="trust-pill ${level.tone}">${row.trust}%</span>
+              </div>
+            `;
+          }).join("") || '<div class="small-note mt-3">Attendance data will appear here.</div>'}
+        </div>
+      `;
+
+      els.attendanceDisputeBoard.innerHTML = disputed.length ? `
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead><tr><th>Name</th><th>Status</th><th>Time</th><th>Suggested Review</th></tr></thead>
+            <tbody>
+              ${disputed.map((row) => `
+                <tr>
+                  <td>${row.name}</td>
+                  <td>${row.status}</td>
+                  <td>${row.time}</td>
+                  <td>${String(row.status).toLowerCase().includes("late") ? "Verify grace window" : String(row.status).toLowerCase().includes("leave") ? "Check leave approval" : "Check fingerprint or OTP fallback"}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : '<div class="small-note mt-3">No high-risk records need dispute review.</div>';
+    }
+
+    function renderMonitoringSummary() {
+      if (!els.monitorSummary) return;
+      const rooms = state.monitoring || [];
+      const liveRooms = rooms.filter((room) => room.lectureStatus && String(room.lectureStatus).toLowerCase() !== "idle").length;
+      const unlocked = rooms.filter((room) => String(room.doorStatus || "").toLowerCase() !== "locked").length;
+      const alertHeavy = rooms.filter((room) => Number(room.alerts || 0) > 0).length;
+
+      els.monitorSummary.innerHTML = [
+        ["Active Rooms", liveRooms],
+        ["Unlocked Doors", unlocked],
+        ["Rooms With Alerts", alertHeavy]
+      ].map(([label, value]) => `
+        <div class="col-md-4">
+          <div class="metric-card">
+            <div class="metric-label">${label}</div>
+            <div class="metric-value">${value}</div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderAnalyticsInsights() {
+      if (!els.riskPredictionBoard || !els.reliabilityBoard) return;
+      const syllabus = getAccessibleSyllabusItems()
+        .map((item) => {
+          const health = computeSyllabusHealth(item);
+          return { ...item, ...health, risk: Math.max(0, health.remaining + Math.max(0, health.expected - health.progress)) };
+        })
+        .sort((a, b) => b.risk - a.risk)
+        .slice(0, 5);
+      const trustScores = (state.attendanceStudents || []).map(estimateTrustScore);
+      const avgTrust = trustScores.length ? Math.round(trustScores.reduce((sum, value) => sum + value, 0) / trustScores.length) : 0;
+      const roomCount = (state.monitoring || []).length;
+      const reliableRooms = (state.monitoring || []).filter((room) => room.doorStatus && room.lectureStatus && Number(room.alerts || 0) === 0).length;
+
+      els.riskPredictionBoard.innerHTML = syllabus.length ? syllabus.map((item) => `
+        <div class="priority-item mt-3">
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="fw-semibold">${item.subject}</div>
+            <span class="trust-pill ${item.risk >= 55 ? "risky" : "good"}">${item.risk}% risk</span>
+          </div>
+          <div class="small-note mt-1">Current progress: ${item.progress}% | Remaining: ${item.remaining}% | Pace: ${item.paceTone}.</div>
+        </div>
+      `).join("") : '<div class="small-note mt-3">No syllabus analytics available.</div>';
+
+      els.reliabilityBoard.innerHTML = `
+        <div class="mini-stat-grid">
+          <div class="mini-stat"><div class="metric-label">Attendance Trust</div><div class="mini-stat-value">${avgTrust}%</div></div>
+          <div class="mini-stat"><div class="metric-label">Reliable Rooms</div><div class="mini-stat-value">${reliableRooms}/${roomCount || 1}</div></div>
+          <div class="mini-stat"><div class="metric-label">Alert Load</div><div class="mini-stat-value">${state.alertItems.length}</div></div>
+        </div>
+      `;
+    }
+
+    function renderSyllabusKpis() {
+      if (!els.syllabusKpiGrid) return;
+      const items = getAccessibleSyllabusItems();
+      const metrics = items.map(computeSyllabusHealth);
+      const averageProgress = metrics.length ? Math.round(metrics.reduce((sum, item) => sum + item.progress, 0) / metrics.length) : 0;
+      const averageRemaining = metrics.length ? Math.round(metrics.reduce((sum, item) => sum + item.remaining, 0) / metrics.length) : 0;
+      const averageDaily = metrics.length ? (metrics.reduce((sum, item) => sum + item.averageDailyCoverage, 0) / metrics.length).toFixed(1) : "0.0";
+      const delayed = metrics.filter((item) => item.paceTone === "Delayed" || item.paceTone === "Watch").length;
+
+      els.syllabusKpiGrid.innerHTML = [
+        ["Average Coverage", `${averageProgress}%`, "Overall syllabus completion in current role scope."],
+        ["Remaining Backlog", `${averageRemaining}%`, "Portion still pending across visible subjects."],
+        ["Daily Teaching Speed", `${averageDaily}%`, "Average daily syllabus movement from saved updates."],
+        ["Subjects Needing Review", delayed, "Subjects slipping or trending behind planned pace."]
+      ].map(([label, value, note]) => `
+        <div class="syllabus-kpi">
+          <div class="metric-label">${label}</div>
+          <strong>${value}</strong>
+          <div class="small-note">${note}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderDailySyllabusFeed() {
+      if (!els.dailySyllabusFeed) return;
+      const entries = getRecentDailySyllabusFeed();
+      els.dailySyllabusFeed.innerHTML = entries.length ? entries.map((entry) => {
+        const tone = entry.paceTone === "Delayed" ? "bad" : entry.paceTone === "Watch" ? "risky" : "good";
+        return `
+          <div class="daily-feed-item">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+              <div>
+                <div class="fw-semibold">${entry.subject}</div>
+                <div class="small-note">${entry.faculty} | ${entry.className} | ${entry.date}</div>
+              </div>
+              <span class="trust-pill ${tone}">${entry.paceTone}</span>
+            </div>
+            <div class="mini-stat-grid mt-2">
+              <div class="mini-stat"><div class="metric-label">Today</div><div class="mini-stat-value">${entry.coveredToday}%</div></div>
+              <div class="mini-stat"><div class="metric-label">Progress</div><div class="mini-stat-value">${entry.progress}%</div></div>
+            </div>
+            <div class="small-note mt-2">${entry.notes || "No notes added."}</div>
+            <div class="small-note">${entry.blockers ? `Blockers: ${entry.blockers}` : "No blockers reported."}</div>
+          </div>
+        `;
+      }).join("") : '<div class="small-note mt-3">Daily syllabus updates will appear here after faculty or CC log them.</div>';
+    }
+
+    function renderDailySyllabusTable() {
+      if (!els.dailySyllabusBody) return;
+      const entries = getRecentDailySyllabusFeed();
+      els.dailySyllabusBody.innerHTML = entries.length
+        ? entries.map((entry) => `<tr><td>${entry.date}</td><td>${entry.subject}</td><td>${entry.faculty}</td><td>${entry.className}</td><td>${entry.coveredToday}%</td><td>${entry.progress}%</td><td>${entry.paceTone}</td></tr>`).join("")
+        : "<tr><td colspan='7'>No daily syllabus updates available.</td></tr>";
+    }
+
+    function hydrateSyllabusForm() {
+      if (!els.syllabusFaculty || !state.user) return;
+      if (!els.syllabusFaculty.value) els.syllabusFaculty.value = state.user.name || "";
+      if (!els.syllabusSemester.value) els.syllabusSemester.value = state.user.className || state.user.class || state.attendanceClass || "";
+      if (!els.syllabusSessionDate.value) els.syllabusSessionDate.value = new Date().toISOString().slice(0, 10);
+      if (!els.syllabusPace.value) els.syllabusPace.value = "On Track";
+    }
+
+    function renderSyllabusList() {
+      if (!els.syllabusList) return;
+      const items = getAccessibleSyllabusItems().slice(0, 6);
+      els.syllabusList.innerHTML = items.length ? items.map((item) => `
+        <div class="syllabus-item">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <div class="fw-semibold">${item.subject}</div>
+              <div class="small-note">${item.code || "-"} | ${item.unit || "-"} | ${item.semester || "-"}</div>
+            </div>
+            <span class="trust-pill ${Number(item.progress || 0) >= 75 ? "good" : Number(item.progress || 0) >= 50 ? "risky" : "bad"}">${item.progress || 0}%</span>
+          </div>
+          <div class="small-note mt-2">Topic: ${item.topic || "-"}</div>
+          <div class="small-note">Faculty: ${item.faculty || "-"}</div>
+          <div class="small-note">Today: ${item.coveredToday || 0}% | Remaining: ${item.remaining || Math.max(0, 100 - Number(item.progress || 0))}% | Pace: ${item.paceTone || "-"}</div>
+          <div class="small-note">Start: ${item.startDate || "-"} | Target: ${item.targetDate || "-"}</div>
+          <div class="small-note">Notes: ${item.notes || "-"}</div>
+          <div class="small-note">${item.blockers ? `Blockers: ${item.blockers}` : "No blockers reported."}</div>
+        </div>
+      `).join("") : '<div class="small-note">No syllabus details added yet.</div>';
+    }
+
+    function renderRoleDashboard() {
+      const role = state.user.role;
+      const data = state.dashboard || {};
+      if (role === "student") {
+        const myName = String(state.user?.name || "").trim().toLowerCase();
+        const myOdRequests = (state.odRequests || []).filter((item) => String(item.student || "").trim().toLowerCase() === myName);
+        const myOdRows = myOdRequests.length
+          ? myOdRequests.map((item) => `<tr><td>${formatOdDate(item.date)}</td><td>${item.reason}</td><td>${item.status}</td></tr>`).join("")
+          : "<tr><td colspan='3'>No OD requests submitted yet.</td></tr>";
+        els.roleSummary.textContent = "Student dashboard with attendance, timetable, OD request tracking, notifications, and lecture status.";
+        const feedbackAction = (state.feedbackConfig || { enabled: false })?.enabled
+          ? '<button type="button" class="btn btn-outline-primary btn-sm mt-3" id="studentFeedbackNavBtn">Open Feedback</button>'
+          : '<div class="small-note mt-3">Feedback is currently disabled by HOD.</div>';
+        els.roleDashboardBody.innerHTML = `
+          <div class="row g-3">
+            <div class="col-md-6"><div class="panel-card"><h4 class="h6">Today's Timetable</h4>${renderMiniList(data.timetable || [], "subject", "time")}</div></div>
+            <div class="col-md-6"><div class="panel-card"><h4 class="h6">Notifications</h4>${renderMiniList(data.alerts || [], "title", "severity")}${feedbackAction}</div></div>
+            <div class="col-12">
+              <div class="panel-card">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                  <h4 class="h6 mb-0">OD Request</h4>
+                  <button type="button" class="btn btn-outline-dark btn-sm icon-btn" id="odRequestBtn"><span aria-hidden="true">&#128204;</span><span>Request OD</span></button>
+                </div>
+                <div class="row g-2">
+                  <div class="col-md-3"><input type="date" id="odRequestDate" class="form-control" value="${new Date().toISOString().slice(0, 10)}"></div>
+                  <div class="col-md-9"><input type="text" id="odRequestReason" class="form-control" placeholder="Reason for OD"></div>
+                </div>
+                <div id="odRequestMessage" class="small-note mt-2">Submit OD request with date and valid reason.</div>
+                <div class="table-responsive mt-3">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Date</th><th>Reason</th><th>Status</th></tr></thead>
+                    <tbody id="odMyRequestsBody">${myOdRows}</tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        renderMetrics({
+          Attendance: `${data.metrics?.attendancePercentage || 0}%`,
+          Lecture: data.metrics?.lectureStatus || "Idle",
+          ManualOTP: data.metrics?.manualOtpStatus || "inactive",
+          Notifications: data.metrics?.notifications || 0
+        });
+        els.monitorMini.innerHTML = `
+          <div class="mb-2">
+            <strong>${state.user.className || state.user.class || "Class"}</strong><br>
+            Lecture ${data.lectureStatus?.lectureStatus || "Idle"} | OTP ${data.metrics?.manualOtpStatus || "inactive"}
+          </div>
+        `;
+        const studentFeedbackNavBtn = document.getElementById("studentFeedbackNavBtn");
+        if (studentFeedbackNavBtn) {
+          studentFeedbackNavBtn.addEventListener("click", () => {
+            state.currentView = "settings";
+            applyRoleAccess();
+            if (els.feedbackStudentForm) els.feedbackStudentForm.style.display = "";
+            if (els.feedbackToggleBtn) els.feedbackToggleBtn.textContent = "Close Form";
+          });
+        }
+      } else if (role === "faculty") {
+        const facultySyllabus = getAccessibleSyllabusItems(state.analytics?.syllabus || [], "faculty");
+        const facultyFeed = getRecentDailySyllabusFeed(facultySyllabus)
+          .map((entry) => ({
+            date: entry.date,
+            subject: entry.subject,
+            coveredToday: `${entry.coveredToday}%`,
+            paceTone: entry.paceTone
+          }));
+        els.roleSummary.textContent = "Faculty dashboard with class controls, attendance logs, lecture progress, and syllabus updates.";
+        els.roleDashboardBody.innerHTML = `
+          <div class="row g-3">
+            <div class="col-md-7"><div class="panel-card"><h4 class="h6">Attendance Logs</h4>${renderMiniTable(data.attendanceLogs || [], ["rollNo", "name", "status", "time"])}</div></div>
+            <div class="col-md-5"><div class="panel-card"><h4 class="h6">Lecture Progress</h4>${renderSyllabusPulse(facultySyllabus, "No syllabus assigned to this faculty yet.")}</div></div>
+            <div class="col-12"><div class="panel-card"><h4 class="h6">Daily Teaching Feed</h4>${renderMiniTable(facultyFeed, ["date", "subject", "coveredToday", "paceTone"])}</div></div>
+          </div>
+        `;
+        renderMetrics({
+          Present: data.summary?.present || 0,
+          Absent: data.summary?.absent || 0,
+          Faculty: state.user.name,
+          Role: "Faculty"
+        });
+      } else if (role === "hod") {
+        const allSyllabus = getAccessibleSyllabusItems(state.analytics?.syllabus || [], "hod");
+        const hodFeed = getRecentDailySyllabusFeed(allSyllabus)
+          .map((entry) => ({
+            date: entry.date,
+            className: entry.className,
+            subject: entry.subject,
+            faculty: entry.faculty,
+            paceTone: entry.paceTone
+          }));
+        els.roleSummary.textContent = "HOD dashboard with workload analytics, approvals, syllabus monitoring, and attendance analytics.";
+        const facultySpeed = computeFacultySyllabusSpeed();
+        const feedbackEntries = state.feedbackEntries || [];
+        const anonymousFeedback = getAnonymousFeedbackRows(feedbackEntries, state.user.className || state.user.class || "");
+        const pendingOd = (state.odRequests || []).filter((item) => item.status === "Pending");
+        const approvedOd = (state.odRequests || []).filter((item) => item.status === "Approved");
+        const pendingRows = pendingOd.length
+          ? pendingOd.map((item) => `
+              <tr>
+                <td>${item.student}</td><td>${item.className}</td><td>${formatOdDate(item.date)}</td><td>${item.reason}</td>
+                <td class="text-nowrap">
+                  <button type="button" class="btn btn-outline-success btn-sm" data-od-action="approve" data-od-id="${item.id}" title="Approve">&#10003;</button>
+                  <button type="button" class="btn btn-outline-danger btn-sm" data-od-action="reject" data-od-id="${item.id}" title="Reject">&#10005;</button>
+                </td>
+              </tr>
+            `).join("")
+          : "<tr><td colspan='5'>No pending OD requests.</td></tr>";
+        const approvedRows = approvedOd.length
+          ? approvedOd.slice(0, 8).map((item) => `<tr><td>${item.student}</td><td>${item.className}</td><td>${formatOdDate(item.date)}</td><td>${item.reason}</td></tr>`).join("")
+          : "<tr><td colspan='4'>No approved OD takers yet.</td></tr>";
+        const classOptions = `<option value="">All Classes</option>${[...(els.attendanceClassSelect?.options || [])].map((option) => `<option value="${option.value}">${option.textContent}</option>`).join("")}`;
+        els.roleDashboardBody.innerHTML = `
+          <div class="row g-3">
+            <div class="col-md-6"><div class="panel-card"><h4 class="h6">Faculty Workload</h4>${renderMiniList(data.facultyWorkload || [], "faculty", "lectures")}</div></div>
+            <div class="col-md-6"><div class="panel-card"><h4 class="h6">Approval Queue</h4>${renderMiniList(data.approvals || [], "event_type", "status")}</div></div>
+            <div class="col-12"><div class="panel-card"><h4 class="h6">Latest Anonymous Feedback</h4>${renderMiniTable(anonymousFeedback, ["responseNo", "className", "subject", "faculty", "rating"])}</div></div>
+            <div class="col-12">
+              <div class="panel-card">
+                <div class="d-flex justify-content-between align-items-center mb-2"><h4 class="h6 mb-0">OD Approvals</h4><span class="small-note">${pendingOd.length} pending</span></div>
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Student</th><th>Class</th><th>Date</th><th>Reason</th><th>Action</th></tr></thead>
+                    <tbody>${pendingRows}</tbody>
+                  </table>
+                </div>
+                <div id="odActionMessage" class="small-note mt-2"></div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="panel-card">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                  <h4 class="h6 mb-0">OD Takers Report</h4>
+                  <div class="d-flex gap-2">
+                    <select id="odReportClass" class="form-select form-select-sm">${classOptions}</select>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="odDownloadBtn">&#128190; Download</button>
+                  </div>
+                </div>
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Student</th><th>Class</th><th>Date</th><th>Reason</th></tr></thead>
+                    <tbody>${approvedRows}</tbody>
+                  </table>
+                </div>
+                <div id="odReportMessage" class="small-note mt-2">Downloadable OD takers list is available only for CC/HOD.</div>
+              </div>
+            </div>
+            <div class="col-lg-6"><div class="panel-card"><h4 class="h6">Faculty Syllabus Speed</h4>${renderMiniTable(facultySpeed, ["faculty", "subject", "speedLabel", "paceTone"])}</div></div>
+            <div class="col-lg-6"><div class="panel-card"><h4 class="h6">Delivery Intelligence</h4>${renderMiniTable(hodFeed, ["date", "className", "subject", "faculty", "paceTone"])}</div></div>
+          </div>
+        `;
+        renderMetrics({
+          Faculty: (data.facultyWorkload || []).length,
+          Pending: (data.approvals || []).length,
+          Syllabus: (data.syllabus || []).length,
+          Feedback: feedbackEntries.length
+        });
+      } else if (role === "cc") {
+        const className = state.user.className || state.user.class || "Class";
+        const ccSyllabus = getAccessibleSyllabusItems(state.analytics?.syllabus || [], "cc");
+        const ccFeed = getRecentDailySyllabusFeed(ccSyllabus)
+          .map((entry) => ({
+            date: entry.date,
+            subject: entry.subject,
+            coveredToday: `${entry.coveredToday}%`,
+            paceTone: entry.paceTone
+          }));
+        const classFeedback = (state.feedbackEntries || []).filter((row) => row.className === className);
+        const anonymousClassFeedback = getAnonymousFeedbackRows(classFeedback, className);
+        const classOd = (state.odRequests || []).filter((item) => String(item.className || "").trim().toUpperCase() === String(className).trim().toUpperCase());
+        const pendingOd = classOd.filter((item) => item.status === "Pending");
+        const approvedOd = classOd.filter((item) => item.status === "Approved");
+        const pendingRows = pendingOd.length
+          ? pendingOd.map((item) => `
+              <tr>
+                <td>${item.student}</td><td>${formatOdDate(item.date)}</td><td>${item.reason}</td>
+                <td class="text-nowrap">
+                  <button type="button" class="btn btn-outline-success btn-sm" data-od-action="approve" data-od-id="${item.id}" title="Approve">&#10003;</button>
+                  <button type="button" class="btn btn-outline-danger btn-sm" data-od-action="reject" data-od-id="${item.id}" title="Reject">&#10005;</button>
+                </td>
+              </tr>
+            `).join("")
+          : "<tr><td colspan='4'>No pending OD requests in your class.</td></tr>";
+        const approvedRows = approvedOd.length
+          ? approvedOd.slice(0, 8).map((item) => `<tr><td>${item.student}</td><td>${formatOdDate(item.date)}</td><td>${item.reason}</td></tr>`).join("")
+          : "<tr><td colspan='3'>No approved OD takers yet.</td></tr>";
+        els.roleSummary.textContent = "Class coordinator dashboard with class timetable follow-up, attendance view, and class-level feedback review.";
+        els.roleDashboardBody.innerHTML = `
+          <div class="row g-3">
+            <div class="col-md-6"><div class="panel-card"><h4 class="h6">Class Timetable</h4>${renderMiniList(data.timetable || [], "subject", "time")}</div></div>
+            <div class="col-md-6"><div class="panel-card"><h4 class="h6">Class Syllabus Pulse</h4>${renderSyllabusPulse(ccSyllabus, "No syllabus updates found for this class.")}</div></div>
+            <div class="col-12"><div class="panel-card"><h4 class="h6">Class Anonymous Feedback</h4>${renderMiniTable(anonymousClassFeedback, ["responseNo", "subject", "faculty", "rating"])}</div></div>
+            <div class="col-12"><div class="panel-card"><h4 class="h6">Class Alerts</h4>${renderMiniList((data.alerts || []).filter((item) => (item.classroom || "") === className), "title", "severity")}</div></div>
+            <div class="col-12"><div class="panel-card"><h4 class="h6">Daily Class Delivery Feed</h4>${renderMiniTable(ccFeed, ["date", "subject", "coveredToday", "paceTone"])}</div></div>
+            <div class="col-12">
+              <div class="panel-card">
+                <div class="d-flex justify-content-between align-items-center mb-2"><h4 class="h6 mb-0">OD Approvals - ${className}</h4><span class="small-note">${pendingOd.length} pending</span></div>
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Student</th><th>Date</th><th>Reason</th><th>Action</th></tr></thead>
+                    <tbody>${pendingRows}</tbody>
+                  </table>
+                </div>
+                <div id="odActionMessage" class="small-note mt-2"></div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="panel-card">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                  <h4 class="h6 mb-0">OD Takers Report - ${className}</h4>
+                  <button type="button" class="btn btn-outline-primary btn-sm" id="odDownloadBtn">&#128190; Download</button>
+                </div>
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Student</th><th>Date</th><th>Reason</th></tr></thead>
+                    <tbody>${approvedRows}</tbody>
+                  </table>
+                </div>
+                <div id="odReportMessage" class="small-note mt-2">Downloadable OD takers list is available only for CC/HOD.</div>
+              </div>
+            </div>
+          </div>
+        `;
+        renderMetrics({
+          Class: className,
+          Feedback: classFeedback.length,
+          Present: data.summary?.present || 0,
+          Total: data.summary?.total || 0
+        });
+      } else {
+        els.roleSummary.textContent = "Admin dashboard with user management, timetable/events control, alerts, and classroom monitoring.";
+        els.roleDashboardBody.innerHTML = `
+          <div class="row g-3">
+            <div class="col-md-6"><div class="panel-card"><h4 class="h6">Users</h4>${renderMiniList(data.users || [], "name", "role")}</div></div>
+            <div class="col-md-6"><div class="panel-card"><h4 class="h6">Events</h4>${renderMiniList(data.events || [], "event_type", "status")}</div></div>
+          </div>
+        `;
+        renderMetrics({
+          Users: (data.users || []).length,
+          Events: (data.events || []).length,
+          Alerts: (data.alerts || []).length,
+          Door: data.monitor?.doorStatus || "Locked"
+        });
+      }
+
+      els.lectureBadge.textContent = data.lectureStatus?.lectureStatus || data.monitor?.lectureStatus || "Idle";
+      wireOdDashboardActions();
+      renderSessionTimeline();
+      renderOperationalIntelligence();
+    }
+
+    function renderQuickCommands() {
+      const disabled = !["faculty", "admin", "hod"].includes(state.user.role);
+      const markup = COMMAND_BUTTONS.map(([command, label]) => `
+        <div class="command-card">
+          <button type="button" class="pin-toggle ${isPinnedCommand(command) ? "active" : ""}" data-pin-command="${command}">${isPinnedCommand(command) ? "Pinned" : "Pin"}</button>
+          <button class="command-btn ${disabled ? "opacity-50" : ""}" data-command="${command}" ${disabled ? "disabled" : ""}>
+            <div class="fw-semibold">${label}</div>
+            <div class="small-note">${command}</div>
+          </button>
+        </div>
+      `).join("");
+      if (els.quickCommands) els.quickCommands.innerHTML = markup;
+      if (els.controlCommands) els.controlCommands.innerHTML = markup;
+      renderPinnedDashboardCommands();
+      document.querySelectorAll("[data-command]").forEach((button) => {
+        button.addEventListener("click", () => sendCommand(button.dataset.command));
+      });
+      document.querySelectorAll("[data-pin-command]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          togglePinnedCommand(button.dataset.pinCommand);
+        });
+      });
+    }
+
+    async function sendCommand(command) {
+      try {
+        const response = await api("/api/control/command", {
+          method: "POST",
+          body: JSON.stringify({ command, classroom: "CSE-A" })
+        });
+        els.controlStatus.textContent = `${response.payload.command} queued by ${response.payload.issuedBy} at ${response.payload.timestamp}.`;
+        await loadMonitoring();
+      } catch (error) {
+        els.controlStatus.textContent = error.message;
+      }
+    }
+
+    async function handleForgotPassword() {
+      const identifier = els.loginEmail.value.trim();
+
+      if (!identifier) {
+        setMessage(els.loginMessage, "Enter your email first, then use Forgot Password.", "error");
+        return;
+      }
+
+      if (!identifier.includes("@")) {
+        setMessage(els.loginMessage, "Password reset needs your email address, not username.", "error");
+        return;
+      }
+
+      if (!state.firebaseEnabled || !state.firebaseAuth) {
+        setMessage(els.loginMessage, "Password reset is unavailable right now. Contact admin or enable Firebase Auth.", "error");
+        return;
+      }
+
+      try {
+        await state.firebaseAuth.sendPasswordResetEmail(identifier);
+        setMessage(els.loginMessage, `Password reset email sent to ${identifier}. Check your inbox and spam folder.`, "ok");
+      } catch (error) {
+        setMessage(els.loginMessage, error.message || "Failed to send password reset email.", "error");
+      }
+    }
+
+    function getWorkingDaysInMonth(year, monthIndex) {
+      let days = 0;
+      const totalDays = new Date(year, monthIndex + 1, 0).getDate();
+      for (let day = 1; day <= totalDays; day += 1) {
+        const weekday = new Date(year, monthIndex, day).getDay();
+        if (weekday !== 0 && weekday !== 6) days += 1;
+      }
+      return days;
+    }
+
+    function computeSeed(text) {
+      return String(text || "").split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    }
+
+    function getBaseAttendanceRatio(status) {
+      const key = String(status || "").trim().toLowerCase();
+      if (key === "present") return 0.9;
+      if (key === "late mark") return 0.82;
+      if (key === "od") return 0.86;
+      if (key === "leave") return 0.74;
+      if (key === "absent") return 0.58;
+      return 0.8;
+    }
+
+    function buildMonthlyStudentRow(student, year, monthIndex, workingDays) {
+      const seed = computeSeed(`${student.rollNo || ""}-${student.name || ""}-${year}-${monthIndex}`);
+      const ratioJitter = ((seed % 11) - 5) / 100;
+      const attendanceRatio = Math.min(0.97, Math.max(0.45, getBaseAttendanceRatio(student.status) + ratioJitter));
+      let attended = Math.max(0, Math.min(workingDays, Math.round(workingDays * attendanceRatio)));
+      let lateMark = Math.min(attended, seed % 3);
+      let od = Math.min(attended - lateMark, (seed % 4 === 0) ? 1 : 0);
+      let leave = Math.min(2, (seed % 5 === 0) ? 1 : 0);
+      let absent = workingDays - attended - leave;
+      if (absent < 0) {
+        leave = Math.max(0, leave + absent);
+        absent = 0;
+      }
+      if (lateMark + od > attended) {
+        od = Math.max(0, attended - lateMark);
+      }
+      const present = Math.max(0, attended - lateMark - od);
+      const attendancePct = workingDays ? ((attended / workingDays) * 100).toFixed(1) : "0.0";
+      return {
+        rollNo: student.rollNo || "-",
+        name: student.name || "-",
+        present,
+        lateMark,
+        od,
+        leave,
+        absent,
+        attended,
+        workingDays,
+        attendancePct
+      };
+    }
+
+    function buildAttendanceExportReport(monthsRequested = 3) {
+      const className = state.attendanceClass || state.user?.className || "CSE-A";
+      const students = [...(state.attendanceStudents || [])];
+      const requestedMonths = Math.max(1, Math.min(6, Number(monthsRequested || 1)));
+      const now = new Date();
+      const monthLabels = [];
+      const monthReports = [];
+      const overallByStudent = new Map();
+
+      for (let offset = requestedMonths - 1; offset >= 0; offset -= 1) {
+        const cursor = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+        const year = cursor.getFullYear();
+        const monthIndex = cursor.getMonth();
+        const monthLabel = cursor.toLocaleString("en-US", { month: "long", year: "numeric" });
+        const workingDays = getWorkingDaysInMonth(year, monthIndex);
+        monthLabels.push(monthLabel);
+
+        const rows = students.map((student) => buildMonthlyStudentRow(student, year, monthIndex, workingDays));
+        const totalWorking = rows.reduce((sum, row) => sum + row.workingDays, 0);
+        const totalAttended = rows.reduce((sum, row) => sum + row.attended, 0);
+        const monthAttendancePct = totalWorking ? ((totalAttended / totalWorking) * 100).toFixed(1) : "0.0";
+
+        rows.forEach((row) => {
+          const key = `${row.rollNo}-${row.name}`;
+          if (!overallByStudent.has(key)) {
+            overallByStudent.set(key, {
+              rollNo: row.rollNo,
+              name: row.name,
+              present: 0,
+              lateMark: 0,
+              od: 0,
+              leave: 0,
+              absent: 0,
+              attended: 0,
+              workingDays: 0
+            });
+          }
+          const aggregate = overallByStudent.get(key);
+          aggregate.present += row.present;
+          aggregate.lateMark += row.lateMark;
+          aggregate.od += row.od;
+          aggregate.leave += row.leave;
+          aggregate.absent += row.absent;
+          aggregate.attended += row.attended;
+          aggregate.workingDays += row.workingDays;
+        });
+
+        monthReports.push({
+          label: monthLabel,
+          workingDays,
+          rows,
+          summary: {
+            totalStudents: rows.length,
+            totalWorking,
+            totalAttended,
+            attendancePct: monthAttendancePct
+          }
+        });
+      }
+
+      const overallRows = [...overallByStudent.values()].map((row) => ({
+        ...row,
+        attendancePct: row.workingDays ? ((row.attended / row.workingDays) * 100).toFixed(1) : "0.0"
+      }));
+      const overallWorking = overallRows.reduce((sum, row) => sum + row.workingDays, 0);
+      const overallAttended = overallRows.reduce((sum, row) => sum + row.attended, 0);
+
+      return {
+        className,
+        generatedOn: new Date().toLocaleString(),
+        requestedMonths,
+        monthLabels,
+        monthReports,
+        overallRows,
+        overallSummary: {
+          totalStudents: students.length,
+          totalWorking: overallWorking,
+          totalAttended: overallAttended,
+          attendancePct: overallWorking ? ((overallAttended / overallWorking) * 100).toFixed(1) : "0.0"
+        }
+      };
+    }
+
+    function downloadBlob(content, fileName, contentType) {
+      const blob = new Blob([content], { type: contentType });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    }
+
+    function exportAttendanceXls(report) {
+      const lines = [];
+      lines.push(`Class\t${report.className}`);
+      lines.push(`Selected Months\t${report.requestedMonths}`);
+      lines.push(`Generated On\t${report.generatedOn}`);
+      lines.push("");
+
+      report.monthReports.forEach((month) => {
+        lines.push(`Month\t${month.label}`);
+        lines.push("Roll No\tName\tPresent\tLate Mark\tOD\tLeave\tAbsent\tAttendance %");
+        month.rows.forEach((row) => {
+          lines.push(`${row.rollNo}\t${row.name}\t${row.present}\t${row.lateMark}\t${row.od}\t${row.leave}\t${row.absent}\t${row.attendancePct}`);
+        });
+        lines.push(`Month Summary\tStudents: ${month.summary.totalStudents}\tWorking Slots: ${month.summary.totalWorking}\tAttended Slots: ${month.summary.totalAttended}\tAttendance %: ${month.summary.attendancePct}`);
+        lines.push("");
+      });
+
+      lines.push("Overall Attendance (Selected Months)");
+      lines.push("Roll No\tName\tPresent\tLate Mark\tOD\tLeave\tAbsent\tAttendance %");
+      report.overallRows.forEach((row) => {
+        lines.push(`${row.rollNo}\t${row.name}\t${row.present}\t${row.lateMark}\t${row.od}\t${row.leave}\t${row.absent}\t${row.attendancePct}`);
+      });
+      lines.push(`Overall Summary\tStudents: ${report.overallSummary.totalStudents}\tWorking Slots: ${report.overallSummary.totalWorking}\tAttended Slots: ${report.overallSummary.totalAttended}\tAttendance %: ${report.overallSummary.attendancePct}`);
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      const safeClass = String(report.className || "class").replace(/[^\w-]+/g, "_");
+      downloadBlob(lines.join("\n"), `${safeClass}_attendance_${report.requestedMonths}m_${stamp}.xls`, "application/vnd.ms-excel;charset=utf-8");
+    }
+
+    function exportAttendancePdf(report) {
+      const jsPdfGlobal = window.jspdf;
+      if (!jsPdfGlobal || !jsPdfGlobal.jsPDF) {
+        throw new Error("PDF library not loaded.");
+      }
+      const { jsPDF } = jsPdfGlobal;
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 10;
+      const marginTop = 10;
+      const marginBottom = 10;
+      const lineHeight = 5;
+      const usableWidth = pageWidth - (marginX * 2);
+      const maxY = pageHeight - marginBottom;
+      let y = marginTop;
+      const writeLine = (text) => {
+        const lines = doc.splitTextToSize(String(text), usableWidth);
+        if (y + (lines.length * lineHeight) > maxY) {
+          doc.addPage();
+          y = marginTop;
+        }
+        doc.text(lines, marginX, y);
+        y += lines.length * lineHeight;
+      };
+
+      doc.setFontSize(11);
+      writeLine(`Attendance Report - ${report.className}`);
+      doc.setFontSize(9);
+      writeLine(`Selected Months: ${report.requestedMonths}`);
+      writeLine(`Generated On: ${report.generatedOn}`);
+      writeLine("");
+
+      report.monthReports.forEach((month) => {
+        writeLine(`Month: ${month.label}`);
+        writeLine("Resp: RollNo | Name | Present | Late | OD | Leave | Absent | Att%");
+        month.rows.forEach((row) => {
+          writeLine(`${row.rollNo} | ${row.name} | ${row.present} | ${row.lateMark} | ${row.od} | ${row.leave} | ${row.absent} | ${row.attendancePct}%`);
+        });
+        writeLine(`Month Summary: Students ${month.summary.totalStudents}, Working ${month.summary.totalWorking}, Attended ${month.summary.totalAttended}, Attendance ${month.summary.attendancePct}%`);
+        writeLine("");
+      });
+
+      writeLine("Overall Attendance (Selected Months)");
+      report.overallRows.forEach((row) => {
+        writeLine(`${row.rollNo} | ${row.name} | ${row.present} | ${row.lateMark} | ${row.od} | ${row.leave} | ${row.absent} | ${row.attendancePct}%`);
+      });
+      writeLine(`Overall Summary: Students ${report.overallSummary.totalStudents}, Working ${report.overallSummary.totalWorking}, Attended ${report.overallSummary.totalAttended}, Attendance ${report.overallSummary.attendancePct}%`);
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      const safeClass = String(report.className || "class").replace(/[^\w-]+/g, "_");
+      doc.save(`${safeClass}_attendance_${report.requestedMonths}m_${stamp}.pdf`);
+    }
+
+    async function handleAttendanceExport() {
+      try {
+        const months = Number(els.attendanceExportMonths?.value || 3);
+        const format = String(els.attendanceExportFormat?.value || "pdf").toLowerCase();
+        const report = buildAttendanceExportReport(months);
+        if (!report.monthReports.length) {
+          setMessage(els.attendanceExportHint, "No attendance rows available for export.", "error");
+          return;
+        }
+        if (format === "xls") {
+          exportAttendanceXls(report);
+        } else if (window.jspdf?.jsPDF) {
+          exportAttendancePdf(report);
+        } else {
+          exportAttendanceXls(report);
+          setMessage(els.attendanceExportHint, "PDF library unavailable, downloaded XLS sheet instead.", "ok");
+          return;
+        }
+        setMessage(
+          els.attendanceExportHint,
+          `Downloaded ${report.requestedMonths} month attendance for ${report.className}, including monthly and overall attendance.`,
+          "ok"
+        );
+      } catch (error) {
+        setMessage(els.attendanceExportHint, error.message || "Attendance export failed.", "error");
+      }
+    }
+
+    async function loadOdData() {
+      try {
+        const data = await api("/api/od/requests");
+        state.odRequests = data.requests || [];
+      } catch (error) {
+        state.odRequests = [];
+      }
+    }
+
+    function sanitizeExportText(value) {
+      return String(value == null ? "" : value).replace(/[\r\n\t]+/g, " ").trim();
+    }
+
+    function exportOdReportXls(payload) {
+      const lines = [];
+      lines.push(`Class\t${payload.className || "All"}`);
+      lines.push(`Generated On\t${payload.generatedOn || new Date().toLocaleString()}`);
+      lines.push("");
+      lines.push("OD Request ID\tStudent\tRoll No\tClass\tOD Date\tReason\tApproved By\tApproved At");
+      (payload.rows || []).forEach((row) => {
+        lines.push([
+          sanitizeExportText(row.id),
+          sanitizeExportText(row.student),
+          sanitizeExportText(row.rollNo),
+          sanitizeExportText(row.className),
+          sanitizeExportText(formatOdDate(row.date)),
+          sanitizeExportText(row.reason),
+          sanitizeExportText(row.approvedBy),
+          sanitizeExportText(row.approvedAt)
+        ].join("\t"));
+      });
+      const stamp = new Date().toISOString().slice(0, 10);
+      const safeClass = String(payload.className || "all_classes").replace(/[^\w-]+/g, "_");
+      downloadBlob(lines.join("\n"), `${safeClass}_od_takers_${stamp}.xls`, "application/vnd.ms-excel;charset=utf-8");
+    }
+
+    async function submitOdRequest() {
+      const date = document.getElementById("odRequestDate")?.value?.trim();
+      const reason = document.getElementById("odRequestReason")?.value?.trim();
+      const messageNode = document.getElementById("odRequestMessage");
+      try {
+        if (!reason) throw new Error("Please enter OD reason.");
+        await api("/api/od/request", {
+          method: "POST",
+          body: JSON.stringify({ date, reason })
+        });
+        if (document.getElementById("odRequestReason")) document.getElementById("odRequestReason").value = "";
+        if (document.getElementById("odRequestDate")) document.getElementById("odRequestDate").value = new Date().toISOString().slice(0, 10);
+        await loadOdData();
+        renderRoleDashboard();
+        setMessage(messageNode, "OD request submitted to CC/HOD.", "ok");
+      } catch (error) {
+        setMessage(messageNode, error.message || "Unable to submit OD request.", "error");
+      }
+    }
+
+    async function decideOdRequest(requestId, action) {
+      const messageNode = document.getElementById("odActionMessage");
+      try {
+        await api(`/api/od/request/${encodeURIComponent(requestId)}/decision`, {
+          method: "POST",
+          body: JSON.stringify({ action })
+        });
+        await Promise.all([loadOdData(), loadAttendance()]);
+        renderRoleDashboard();
+        setMessage(messageNode, `OD request ${action === "approve" ? "approved" : "rejected"}.`, "ok");
+      } catch (error) {
+        setMessage(messageNode, error.message || "OD action failed.", "error");
+      }
+    }
+
+    async function downloadOdReport() {
+      const role = String(state.user?.role || "").toLowerCase();
+      const messageNode = document.getElementById("odReportMessage");
+      try {
+        if (!["cc", "hod"].includes(role)) throw new Error("OD report is allowed only for CC and HOD.");
+        const selectedClass = role === "hod" ? (document.getElementById("odReportClass")?.value || "") : (state.user?.className || "");
+        const data = await api(`/api/od/report?className=${encodeURIComponent(selectedClass)}`);
+        if (!(data.rows || []).length) throw new Error("No approved OD takers found for report.");
+        exportOdReportXls(data);
+        setMessage(messageNode, `Downloaded OD takers report (${data.rows.length} records).`, "ok");
+      } catch (error) {
+        setMessage(messageNode, error.message || "OD report download failed.", "error");
+      }
+    }
+
+    function wireOdDashboardActions() {
+      const reportClass = document.getElementById("odReportClass");
+      if (reportClass && String(state.user?.role || "").toLowerCase() === "hod") {
+        const preferred = state.attendanceClass || "";
+        if ([...reportClass.options].some((opt) => opt.value === preferred)) {
+          reportClass.value = preferred;
+        }
+      }
+      const requestBtn = document.getElementById("odRequestBtn");
+      if (requestBtn) {
+        requestBtn.addEventListener("click", submitOdRequest);
+      }
+      document.querySelectorAll("[data-od-action][data-od-id]").forEach((button) => {
+        button.addEventListener("click", () => decideOdRequest(button.dataset.odId, button.dataset.odAction));
+      });
+      const downloadBtn = document.getElementById("odDownloadBtn");
+      if (downloadBtn) {
+        downloadBtn.addEventListener("click", downloadOdReport);
+      }
+    }
+
+    function getStudentOwnAttendanceRows(rows) {
+      const currentName = String(state.user?.name || "").trim().toLowerCase();
+      if (!currentName) return [];
+      return (rows || []).filter((row) => String(row.name || "").trim().toLowerCase() === currentName);
+    }
+
+    function buildStudentAttendanceSummary(rows, faculty = "-") {
+      const summary = {
+        faculty,
+        total: rows.length,
+        present: 0,
+        absent: 0,
+        onTime: 0,
+        lateMark: 0,
+        od: 0,
+        leave: 0
+      };
+      rows.forEach((row) => {
+        const status = String(row.status || "").toLowerCase();
+        if (status === "present") {
+          summary.present += 1;
+          summary.onTime += 1;
+          return;
+        }
+        if (status === "late mark") {
+          summary.present += 1;
+          summary.lateMark += 1;
+          return;
+        }
+        if (status === "on duty") {
+          summary.present += 1;
+          summary.od += 1;
+          return;
+        }
+        if (status === "leave") {
+          summary.leave += 1;
+          return;
+        }
+        summary.absent += 1;
+      });
+      return summary;
+    }
+
+    async function loadAttendance() {
+      const summary = await api(`/api/attendance/summary/${encodeURIComponent(state.attendanceClass)}`);
+      const students = await api(`/api/attendance/students/${encodeURIComponent(state.attendanceClass)}?filter=${encodeURIComponent(state.attendanceFilter)}`);
+      const studentOnlyRows = state.user.role === "student" ? getStudentOwnAttendanceRows(students.students || []) : (students.students || []);
+      const effectiveSummary = state.user.role === "student"
+        ? buildStudentAttendanceSummary(studentOnlyRows, summary.faculty || "-")
+        : summary;
+      state.attendanceSummary = effectiveSummary;
+      state.attendanceStudents = studentOnlyRows;
+      els.facultyLabel.textContent = `Faculty: ${effectiveSummary.faculty || "-"}`;
+
+      els.attendanceMetrics.innerHTML = [
+        ["Total Enrolled", effectiveSummary.total || 0, "total"],
+        ["Present", effectiveSummary.present || 0, "present"],
+        ["Absent", effectiveSummary.absent || 0, "absent"],
+        ["On Time", effectiveSummary.onTime || 0, "onTime"]
+      ].map(([label, value, filter]) => `
+        <div class="col-md-6 col-xl-3">
+          <div class="metric-card attendance-filter ${state.user.role === "student" ? "opacity-75" : ""}" data-filter="${filter}">
+            <div class="metric-label">${label}</div>
+            <div class="metric-value">${value}</div>
+          </div>
+        </div>
+      `).join("");
+
+      els.attendanceBreakdown.innerHTML = [
+        ["Late Mark", effectiveSummary.lateMark || 0, "lateMark"],
+        ["On Duty", effectiveSummary.od || 0, "od"],
+        ["Leave", effectiveSummary.leave || 0, "leave"],
+        ["All Students", effectiveSummary.total || 0, "total"]
+      ].map(([label, value, filter]) => `
+        <div class="col-6">
+          <div class="panel-card attendance-filter ${state.user.role === "student" ? "opacity-75" : ""}" data-filter="${filter}">
+            <div class="metric-label">${label}</div>
+            <div class="h4 mb-0">${value}</div>
+          </div>
+        </div>
+      `).join("");
+
+      if (state.user.role === "student") {
+        els.attendanceTableTitle.textContent = `My Attendance - ${state.attendanceClass}`;
+        els.attendanceTableSub.textContent = `Showing only your attendance record for the selected status.`;
+      } else {
+        els.attendanceTableTitle.textContent = `${state.attendanceFilter} students - ${state.attendanceClass}`;
+        els.attendanceTableSub.textContent = `Showing ${studentOnlyRows.length} records.`;
+      }
+      els.attendanceTableBody.innerHTML = studentOnlyRows.length
+        ? studentOnlyRows.map((row) => `<tr><td>${row.rollNo}</td><td>${row.name}</td><td>${row.status}</td><td>${row.time}</td></tr>`).join("")
+        : "<tr><td colspan='4'>No data found.</td></tr>";
+
+      if (state.user.role !== "student") {
+        document.querySelectorAll(".attendance-filter").forEach((tile) => {
+          tile.addEventListener("click", async () => {
+            state.attendanceFilter = tile.dataset.filter;
+            await loadAttendance();
+          });
+        });
+        if (els.attendanceExportHint) {
+          const months = Number(els.attendanceExportMonths?.value || 3);
+          setMessage(
+            els.attendanceExportHint,
+            `Ready to download ${months} month attendance for ${state.attendanceClass}, including monthly and overall summary.`
+          );
+        }
+      }
+
+      renderAttendanceInsights();
+      renderSessionTimeline();
+      renderOperationalIntelligence();
+    }
+
+    async function loadClassOptions() {
+      const data = await api("/api/attendance/classes");
+      els.attendanceClassSelect.innerHTML = data.classes.map((item) => `<option value="${item}">${item}</option>`).join("");
+      if (data.classes.includes(state.user.className)) state.attendanceClass = state.user.className;
+      if (["student", "cc"].includes(state.user.role) && data.classes.includes(state.user.className || state.user.class)) {
+        state.attendanceClass = state.user.className || state.user.class;
+      }
+      els.attendanceClassSelect.value = state.attendanceClass;
+      els.attendanceClassSelect.disabled = ["student", "cc"].includes(state.user.role);
+    }
+
+    async function loadTimetable() {
+      const data = await api(`/api/timetable?className=${encodeURIComponent(state.attendanceClass)}&mode=${encodeURIComponent(state.timetableSuggestionMode)}`);
+      els.timetableTitle.textContent = state.user.role === "hod"
+        ? `Suggested Full-Day Timetable (${state.timetableSuggestionMode === "with-practical" ? "With Practical" : "Without Practical"})`
+        : "Today's Timetable";
+      els.timetableSuggestionMode.value = state.timetableSuggestionMode;
+      els.timetableClassLabel.textContent = `Class: ${data.className}`;
+      state.timetablePlanMeta = data;
+      els.timetableBody.innerHTML = data.schedule.length
+        ? data.schedule.map((row) => `<tr><td>${row.time}</td><td>${row.subject}</td><td>${row.faculty}</td><td>${row.classroom}</td></tr>`).join("")
+        : "<tr><td colspan='4'>No timetable entries available for today.</td></tr>";
+      els.timetablePlanNote.textContent = data.summary || "Timetable plan details will appear here.";
+
+      const approval = data.approval || state.timetableApproval;
+      els.timetableApprovalStatus.textContent = approval
+        ? `${approval.status} by ${approval.updatedBy} on ${approval.timestamp}.`
+        : "This adjusted timetable has not been sent for HOD approval yet.";
+      els.approveTimetableBtn.textContent = state.user.role === "hod" ? "Approve Suggested Timetable" : "Send Adjusted Timetable To HOD";
+    }
+
+    async function loadEvents() {
+      const data = await api("/api/events");
+      els.eventsBody.innerHTML = data.events.length
+        ? data.events.map((event) => `<tr><td>${event.event_type}</td><td>${event.classroom}</td><td>${event.start_time}</td><td>${event.end_time}</td><td>${event.approved_by}</td><td>${event.status}</td></tr>`).join("")
+        : "<tr><td colspan='6'>No events scheduled.</td></tr>";
+    }
+
+    async function loadAlerts() {
+      const data = await api("/api/alerts");
+      state.alertItems = data.alerts || [];
+      els.alertsBody.innerHTML = data.alerts.length
+        ? data.alerts.map((alert) => `<tr><td>${alert.title}</td><td>${alert.message}</td><td>${alert.severity}</td><td>${alert.classroom}</td><td>${alert.createdAt || "-"}</td></tr>`).join("")
+        : "<tr><td colspan='5'>No alerts available.</td></tr>";
+      renderSessionTimeline();
+      renderAnalyticsInsights();
+    }
+
+    async function loadMonitoring() {
+      const data = await api("/api/classrooms/monitor");
+      const cards = Object.values(data.classrooms || {});
+      state.monitoring = cards;
+      els.monitorCards.innerHTML = cards.map((room) => `
+        <div class="col-lg-4">
+          <div class="panel-card h-100">
+            <div class="d-flex justify-content-between mb-2"><h3 class="h5 mb-0">${room.classroom}</h3><span class="status-pill">${room.lectureStatus || "Idle"}</span></div>
+            <div class="small-note">Students present: ${room.studentsPresent ?? 0}</div>
+            <div class="small-note">Students inside: ${room.studentsInside ?? 0}</div>
+            <div class="small-note">Door: ${room.doorStatus || "-"}</div>
+            <div class="small-note">Alerts: ${room.alerts || "-"}</div>
+            <div class="small-note">Lecture: ${room.currentLecture || "-"}</div>
+            <div class="mt-3"><span class="health-pill ${Number(room.alerts || 0) === 0 && room.doorStatus && room.lectureStatus ? "good" : Number(room.alerts || 0) <= 1 ? "risky" : "bad"}">${Number(room.alerts || 0) === 0 ? "Stable device state" : "Needs review"}</span></div>
+          </div>
+        </div>
+      `).join("");
+      els.monitorMini.innerHTML = cards.map((room) => `
+        <div class="mb-2">
+          <strong>${room.classroom}</strong><br>
+          Door ${room.doorStatus || "-"} | Present ${room.studentsPresent ?? 0} | Inside ${room.studentsInside ?? 0}
+        </div>
+      `).join("");
+      renderMonitoringSummary();
+      renderSessionTimeline();
+      renderOperationalIntelligence();
+      renderAnalyticsInsights();
+    }
+
+    async function loadControlStatus() {
+      const data = await api("/api/control/status");
+      const commands = Object.values(data.commands || {});
+      els.controlStatus.textContent = commands.length
+        ? `Last command: ${commands[commands.length - 1].command} by ${commands[commands.length - 1].issuedBy}`
+        : "No command sent yet.";
+    }
+
+    async function loadSettings() {
+      hydrateSyllabusForm();
+      try {
+        state.feedbackConfig = await api("/api/feedback/config");
+      } catch (error) {
+        state.feedbackConfig = { enabled: false, title: "Class Feedback", prompt: "", suggestions: [] };
+      }
+
+      try {
+        const feedback = await api("/api/feedback");
+        state.feedbackEntries = feedback.entries || [];
+      } catch (error) {
+        state.feedbackEntries = [];
+      }
+
+      renderFeedbackStudentPanel();
+      renderFeedbackControlPanel();
+      renderFeedbackReview();
+      renderFacultySyllabusSpeed();
+      renderDailySyllabusTable();
+      renderSyllabusList();
+
+      if (["admin", "hod"].includes(state.user.role)) {
+        try {
+          const users = await api("/api/users");
+          els.usersBody.innerHTML = users.users.length
+            ? users.users.map((user) => `<tr><td>${user.name}</td><td>${user.email}</td><td>${user.role}</td><td>${user.department || "-"}</td><td>${user.className || user.class || "-"}</td><td>${user.fingerprintEnrollmentId || "-"}</td></tr>`).join("")
+            : "<tr><td colspan='6'>No users found.</td></tr>";
+        } catch (error) {
+          els.usersBody.innerHTML = `<tr><td colspan='6'>${error.message}</td></tr>`;
+        }
+
+        try {
+          const activity = await api("/api/activity-log");
+          els.activityBody.innerHTML = activity.activity.length
+            ? activity.activity.map((row) => `<tr><td>${row.action}</td><td>${row.actorName}</td><td>${row.actorRole}</td><td>${row.timestamp}</td></tr>`).join("")
+            : "<tr><td colspan='4'>No activity available.</td></tr>";
+        } catch (error) {
+          els.activityBody.innerHTML = `<tr><td colspan='4'>${error.message}</td></tr>`;
+        }
+      } else {
+        els.usersBody.innerHTML = "<tr><td colspan='6'>User management is available only for HOD and admin.</td></tr>";
+        els.activityBody.innerHTML = "<tr><td colspan='4'>Activity log is available only for HOD and admin.</td></tr>";
+      }
+
+      if (state.dashboard) renderRoleDashboard();
+    }
+
+    function destroyCharts() {
+      Object.values(state.charts).forEach((chart) => chart.destroy());
+      state.charts = {};
+    }
+
+    async function loadAnalytics() {
+      if (!canAccessView("analytics")) return;
+      const data = await api("/api/analytics");
+      state.analytics = data;
+      destroyCharts();
+      const scopedSyllabus = getAccessibleSyllabusItems(data.syllabus || []);
+      const timelineLabels = scopedSyllabus.map((x) => x.subject);
+
+      state.charts.attendance = new Chart(document.getElementById("attendanceChart"), {
+        type: "bar",
+        data: { labels: data.attendance.map((x) => x.className), datasets: [{ label: "Attendance %", data: data.attendance.map((x) => x.percentage), backgroundColor: "#178582" }] }
+      });
+      state.charts.syllabus = new Chart(document.getElementById("syllabusChart"), {
+        type: "bar",
+        data: { labels: timelineLabels, datasets: [{ label: "Progress %", data: scopedSyllabus.map((x) => x.progress), backgroundColor: "#ef8354" }] }
+      });
+      state.charts.workload = new Chart(document.getElementById("workloadChart"), {
+        type: "line",
+        data: { labels: data.facultyWorkload.map((x) => x.faculty), datasets: [{ label: "Lectures", data: data.facultyWorkload.map((x) => x.workload), borderColor: "#0f5b78", backgroundColor: "rgba(15,91,120,0.18)", fill: true }] }
+      });
+      state.charts.completion = new Chart(document.getElementById("completionChart"), {
+        type: "doughnut",
+        data: { labels: data.lectureCompletion.map((x) => x.label), datasets: [{ data: data.lectureCompletion.map((x) => x.value), backgroundColor: ["#23825d", "#ef8354"] }] }
+      });
+      if (els.syllabusTimelineChart) {
+        state.charts.syllabusTimeline = new Chart(document.getElementById("syllabusTimelineChart"), {
+          type: "line",
+          data: {
+            labels: timelineLabels,
+            datasets: [
+              {
+                label: "Actual Progress %",
+                data: scopedSyllabus.map((x) => Number(x.progress || 0)),
+                borderColor: "#0f5b78",
+                backgroundColor: "rgba(15,91,120,0.16)",
+                fill: true,
+                tension: 0.35
+              },
+              {
+                label: "Expected Plan %",
+                data: scopedSyllabus.map((x) => Number(x.expectedProgress || 0)),
+                borderColor: "#ef8354",
+                backgroundColor: "rgba(239,131,84,0.10)",
+                borderDash: [6, 6],
+                fill: false,
+                tension: 0.25
+              }
+            ]
+          }
+        });
+      }
+      renderOperationalIntelligence();
+      renderAnalyticsInsights();
+      renderSyllabusKpis();
+      renderDailySyllabusFeed();
+      renderDailySyllabusTable();
+      renderSyllabusList();
+      if (state.dashboard) renderRoleDashboard();
+    }
+
+    async function createEvent() {
+      const startTime = formatEventTime(els.eventStart.value, els.eventStartPeriod.value);
+      const endTime = formatEventTime(els.eventEnd.value, els.eventEndPeriod.value);
+
+      if (!startTime || !endTime) {
+        setMessage(els.eventMessage, "Select both start and end time.", "error");
+        return;
+      }
+
+      try {
+        await api("/api/events", {
+          method: "POST",
+          body: JSON.stringify({
+            event_type: els.eventType.value,
+            classroom: els.eventClassroom.value.trim(),
+            start_time: startTime,
+            end_time: endTime
+          })
+        });
+        setMessage(els.eventMessage, "Event stored in Firebase.", "ok");
+        await loadEvents();
+      } catch (error) {
+        setMessage(els.eventMessage, error.message, "error");
+      }
+    }
+
+    async function saveTimetableEntry() {
+      const timeRange = formatTimetableRange(
+        els.timetableStart.value,
+        els.timetableStartPeriod.value,
+        els.timetableEnd.value,
+        els.timetableEndPeriod.value
+      );
+
+      if (!els.timetableSubject.value.trim() || !els.timetableFaculty.value.trim() || !els.timetableRoom.value.trim() || !timeRange) {
+        setMessage(els.timetableMessage, "Fill all timetable fields using 12-hour time.", "error");
+        return;
+      }
+
+      try {
+        await api("/api/timetable", {
+          method: "POST",
+          body: JSON.stringify({
+            className: state.attendanceClass,
+            subject: els.timetableSubject.value.trim(),
+            faculty: els.timetableFaculty.value.trim(),
+            classroom: els.timetableRoom.value.trim(),
+            time: timeRange
+          })
+        });
+        setMessage(els.timetableMessage, "Timetable entry added.", "ok");
+        ["timetableSubject", "timetableFaculty", "timetableRoom", "timetableStart", "timetableEnd"].forEach((key) => {
+          if (els[key]) els[key].value = "";
+        });
+        els.timetableStartPeriod.value = "AM";
+        els.timetableEndPeriod.value = "AM";
+        await loadTimetable();
+      } catch (error) {
+        setMessage(els.timetableMessage, error.message, "error");
+      }
+    }
+
+    function toggleFeedbackForm() {
+      const config = state.feedbackConfig || { enabled: false, title: "Class Feedback", prompt: "", suggestions: [] };
+      if (!config?.enabled) return;
+      const open = els.feedbackStudentForm.style.display !== "none";
+      els.feedbackStudentForm.style.display = open ? "none" : "";
+      els.feedbackToggleBtn.textContent = open ? "Open Form" : "Close Form";
+    }
+
+    async function saveFeedbackConfig() {
+      try {
+        const response = await api("/api/feedback/config", {
+          method: "POST",
+          body: JSON.stringify({
+            enabled: els.feedbackEnabled.value === "true",
+            title: els.feedbackFormTitle.value.trim(),
+            prompt: els.feedbackFormPrompt.value.trim(),
+            suggestions: els.feedbackSuggestionsInput.value.split(",").map((item) => item.trim()).filter(Boolean)
+          })
+        });
+        state.feedbackConfig = response.config;
+        renderFeedbackControlPanel();
+        renderFeedbackStudentPanel();
+        setMessage(els.feedbackControlMessage, "Feedback settings updated by HOD.", "ok");
+      } catch (error) {
+        setMessage(els.feedbackControlMessage, error.message, "error");
+      }
+    }
+
+    async function submitFeedback() {
+      const config = state.feedbackConfig || { enabled: false, title: "Class Feedback", prompt: "", suggestions: [] };
+      if (!config?.enabled) {
+        setMessage(els.feedbackStudentMessage, "Feedback form is disabled by HOD.", "error");
+        return;
+      }
+
+      const subjects = getSemesterSubjects(state.user?.className || state.user?.class || "");
+      const entries = subjects.map((item, index) => ({
+        subject: item.subject,
+        rating: document.querySelector(`[data-feedback-rating="${index}"]`)?.value || "5",
+        comment: document.querySelector(`[data-feedback-comment="${index}"]`)?.value?.trim() || ""
+      }));
+
+      if (!entries.length) {
+        setMessage(els.feedbackStudentMessage, "No semester subjects are available for feedback.", "error");
+        return;
+      }
+
+      try {
+        await api("/api/feedback", {
+          method: "POST",
+          body: JSON.stringify({
+            entries
+          })
+        });
+        setMessage(els.feedbackStudentMessage, `Feedback submitted for ${entries.length} subject${entries.length === 1 ? "" : "s"}.`, "ok");
+        document.querySelectorAll("[data-feedback-comment]").forEach((field) => {
+          field.value = "";
+        });
+        document.querySelectorAll("[data-feedback-rating]").forEach((field) => {
+          field.value = "5";
+        });
+        await loadSettings();
+      } catch (error) {
+        setMessage(els.feedbackStudentMessage, error.message, "error");
+      }
+    }
+
+    async function createAlert() {
+      try {
+        await api("/api/alerts", {
+          method: "POST",
+          body: JSON.stringify({
+            title: els.alertTitle.value.trim(),
+            message: els.alertMessageInput.value.trim(),
+            severity: els.alertSeverity.value,
+            classroom: "CSE-A"
+          })
+        });
+        setMessage(els.alertFormMessage, "Alert written to Firebase.", "ok");
+        await loadAlerts();
+      } catch (error) {
+        setMessage(els.alertFormMessage, error.message, "error");
+      }
+    }
+
+    async function submitOtp() {
+      try {
+        const response = await api("/api/manual-otp/verify", {
+          method: "POST",
+          body: JSON.stringify({ classroom: "CSE-A", otp: els.otpInput.value.trim() })
+        });
+        setMessage(els.otpMessage, response.message, "ok");
+        await loadAttendance();
+      } catch (error) {
+        setMessage(els.otpMessage, error.message, "error");
+      }
+    }
+
+    async function generateStudentOtp() {
+      try {
+        const response = await api("/api/control/command", {
+          method: "POST",
+          body: JSON.stringify({ command: "generate_otp", classroom: "CSE-A" })
+        });
+        setMessage(els.otpMessage, `${response.message}. Check the classroom display for the OTP.`, "ok");
+      } catch (error) {
+        setMessage(els.otpMessage, error.message, "error");
+      }
+    }
+
+    async function updateSyllabus() {
+      const payload = {
+        key: els.syllabusCode.value.trim() || els.syllabusSubject.value.trim(),
+        subject: els.syllabusSubject.value.trim(),
+        code: els.syllabusCode.value.trim(),
+        unit: els.syllabusUnit.value.trim(),
+        topic: els.syllabusTopic.value.trim(),
+        faculty: els.syllabusFaculty.value.trim(),
+        semester: els.syllabusSemester.value.trim(),
+        className: els.syllabusSemester.value.trim(),
+        startDate: els.syllabusStartDate.value,
+        targetDate: els.syllabusTargetDate.value,
+        progress: els.syllabusProgress.value,
+        coveredToday: els.syllabusCoveredToday.value,
+        sessionDate: els.syllabusSessionDate.value,
+        pace: els.syllabusPace.value,
+        notes: els.syllabusNotes.value.trim(),
+        blockers: els.syllabusBlockers.value.trim()
+      };
+
+      if (!payload.subject || !payload.code || !payload.unit || !payload.topic || !payload.faculty || !payload.semester || !payload.progress || !payload.sessionDate) {
+        setMessage(els.syllabusMessage, "Fill all syllabus fields before saving.", "error");
+        return;
+      }
+
+      try {
+        const response = await api("/api/syllabus/update", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        setMessage(els.syllabusMessage, response.message, "ok");
+        await loadAnalytics();
+        [
+          "syllabusSubject", "syllabusCode", "syllabusUnit", "syllabusTopic",
+          "syllabusFaculty", "syllabusSemester", "syllabusStartDate",
+          "syllabusTargetDate", "syllabusProgress", "syllabusNotes",
+          "syllabusCoveredToday", "syllabusBlockers"
+        ].forEach((key) => {
+          if (els[key]) els[key].value = "";
+        });
+        if (els.syllabusPace) els.syllabusPace.value = "On Track";
+        if (els.syllabusSessionDate) els.syllabusSessionDate.value = new Date().toISOString().slice(0, 10);
+        hydrateSyllabusForm();
+        await loadSettings();
+      } catch (error) {
+        setMessage(els.syllabusMessage, error.message, "error");
+      }
+    }
+
+    async function approveTimetable() {
+      try {
+        const response = await api("/api/timetable/approval", {
+          method: "POST",
+          body: JSON.stringify({
+            className: state.attendanceClass,
+            mode: state.timetableSuggestionMode,
+            approved: state.user.role === "hod"
+          })
+        });
+        state.timetableApproval = response.approval || null;
+        els.timetableApprovalStatus.textContent = `${response.approval.status} by ${response.approval.updatedBy} on ${response.approval.timestamp}.`;
+        if (state.user.role === "hod") alert("Timetable approved by HOD.");
+        else alert("Adjusted timetable sent to HOD for approval.");
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    async function loadDashboard() {
+      state.dashboard = await api("/api/dashboard");
+      renderRoleDashboard();
+      renderQuickCommands();
+    }
+
+    function wireNavigation() {
+      document.querySelectorAll(".smart-link[data-view]").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          const view = link.dataset.view;
+          if (!canAccessView(view)) return;
+          state.currentView = view;
+          applyRoleAccess();
+        });
+      });
+    }
+
+    async function refreshAll() {
+      await loadOdData();
+      const tasks = [loadDashboard(), loadAttendance(), loadTimetable(), loadEvents(), loadAlerts(), loadSettings()];
+      if (canAccessView("monitoring")) tasks.push(loadMonitoring());
+      if (canAccessView("control")) tasks.push(loadControlStatus());
+      if (canAccessView("analytics")) tasks.push(loadAnalytics());
+      await Promise.all(tasks);
+    }
+
+    async function bootstrapApp() {
+      els.sidebarUser.textContent = `${state.user.name} - ${state.user.role.toUpperCase()}`;
+      els.roleBadge.textContent = state.user.role.toUpperCase();
+      els.classBadge.textContent = state.user.className || state.user.class || "General";
+      els.departmentBadge.textContent = state.user.department || "Department";
+      state.attendanceClass = state.user.className || state.user.class || "SY";
+      loadPinnedCommands();
+      applyRoleAccess();
+      await loadClassOptions();
+      await refreshAll();
+      clearInterval(state.refreshTimer);
+      state.refreshTimer = setInterval(refreshAll, 15000);
+    }
+
+    function logout() {
+      clearInterval(state.refreshTimer);
+      state.token = "";
+      state.user = null;
+      if (state.firebaseAuth) state.firebaseAuth.signOut().catch(() => {});
+      els.appShell.style.display = "none";
+      els.authShell.style.display = "grid";
+    }
+
+    async function init() {
+      bindEls();
+      state.apiBase = await resolveApiBase();
+      await initFirebase();
+      wirePasswordToggles();
+      wireNavigation();
+
+      els.loginBtn.addEventListener("click", handleLogin);
+      els.forgotPasswordBtn.addEventListener("click", handleForgotPassword);
+      els.signupBtn.addEventListener("click", handleSignup);
+      els.signupRole.addEventListener("change", updateSignupRoleFields);
+      els.signupFingerprint.addEventListener("blur", lookupFingerprint);
+      els.attendanceClassSelect.addEventListener("change", async (event) => {
+        state.attendanceClass = event.target.value;
+        await loadAttendance();
+        await loadTimetable();
+      });
+      els.attendanceExportBtn.addEventListener("click", handleAttendanceExport);
+      els.attendanceExportMonths.addEventListener("change", () => {
+        const months = Number(els.attendanceExportMonths.value || 3);
+        setMessage(
+          els.attendanceExportHint,
+          `Ready to download ${months} month attendance for ${state.attendanceClass}, including monthly and overall summary.`
+        );
+      });
+      els.eventBtn.addEventListener("click", createEvent);
+      els.alertBtn.addEventListener("click", createAlert);
+      els.otpGenerateBtn.addEventListener("click", generateStudentOtp);
+      els.otpBtn.addEventListener("click", submitOtp);
+      els.syllabusBtn.addEventListener("click", updateSyllabus);
+      els.feedbackToggleBtn.addEventListener("click", toggleFeedbackForm);
+      els.feedbackSubmitBtn.addEventListener("click", submitFeedback);
+      els.feedbackConfigBtn.addEventListener("click", saveFeedbackConfig);
+      els.toggleTimetableFormBtn.addEventListener("click", () => setTimetableFormVisibility(!state.timetableFormOpen));
+      els.saveTimetableBtn.addEventListener("click", saveTimetableEntry);
+      els.timetableSuggestionMode.addEventListener("change", async (event) => {
+        state.timetableSuggestionMode = event.target.value;
+        await loadTimetable();
+      });
+      els.approveTimetableBtn.addEventListener("click", approveTimetable);
+      els.logoutBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        logout();
+      });
+
+      setTimetableFormVisibility(false);
+      updateSignupRoleFields();
+      setMessage(els.loginMessage, state.firebaseEnabled ? "Firebase Auth detected. Use email login for token-based sessions." : "Firebase web config not set. Backend fallback auth is active.");
+    }
+
+    init().catch((error) => {
+      document.body.innerHTML = `<div class="container py-5"><div class="alert alert-danger">${error.message}</div></div>`;
+    });
+  </script>
+</body>
+</html>
