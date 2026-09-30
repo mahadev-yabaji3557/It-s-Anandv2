@@ -1,5 +1,4 @@
 require("dotenv").config();
-
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
@@ -1120,7 +1119,8 @@ app.post("/api/manual-otp/verify", authMiddleware, requireRoles(["student"]), as
 
 app.post("/api/control/command", authMiddleware, async (req, res) => {
   try {
-    const { command, classroom = DEFAULT_CLASSROOM } = req.body || {};
+    const { command, classroom = DEFAULT_CLASSROOM, payload: commandPayload = {} } = req.body || {};
+    const cleanClassroom = normalizeClass(classroom) || DEFAULT_CLASSROOM;
     if (!COMMANDS.includes(command)) {
       return res.status(400).json({ error: "Unsupported command" });
     }
@@ -1132,41 +1132,53 @@ app.post("/api/control/command", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "Access denied for this command" });
     }
 
-    const payload = {
+    const now = new Date().toISOString();
+    const commandId = await dbPush(`device_commands/${sanitizeForPath(cleanClassroom)}`, {
       command,
-      classroom,
+      classroom: cleanClassroom,
+      issuedBy: req.user.name,
+      issuedByUid: req.user.uid || null,
+      role,
+      status: "queued",
+      timestamp: now,
+      createdAt: now,
+      payload: commandPayload && typeof commandPayload === "object" ? commandPayload : {}
+    });
+
+    // Keep the old web-dashboard command location for backward compatibility.
+    const legacyPayload = {
+      command,
+      classroom: cleanClassroom,
       issuedBy: req.user.name,
       role,
       status: "queued",
-      timestamp: new Date().toISOString()
+      timestamp: now,
+      commandId
     };
-
-    await dbSet(`commands/${command}`, payload);
+    await dbSet(`commands/${command}`, legacyPayload);
 
     if (command === "generate_otp") {
       const otp = String(Math.floor(100000 + Math.random() * 900000));
-      await dbSet(`manual_otp/${classroom}`, {
+      await dbSet(`manual_otp/${cleanClassroom}`, {
         code: otp,
         status: "active",
         generatedBy: req.user.name,
-        generatedAt: new Date().toISOString(),
+        generatedAt: now,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
       });
     }
 
-    const statusPatch = {
-      updatedAt: new Date().toISOString()
-    };
+    const statusPatch = { updatedAt: now };
     if (command === "open_class") statusPatch.doorStatus = "Unlocked";
     if (command === "end_lecture") statusPatch.lectureStatus = "Completed";
     if (command === "short_break") statusPatch.lectureStatus = "Short Break";
     if (command === "emergency") statusPatch.alerts = "Emergency alert triggered";
     if (command === "start_seminar") statusPatch.lectureStatus = "Seminar";
     if (command === "half_day") statusPatch.lectureStatus = "Half Day";
-    await dbUpdate(`classroom_status/${classroom}`, statusPatch);
+    await dbUpdate(`classroom_status/${cleanClassroom}`, statusPatch);
 
-    await logActivity("command_issued", req.user, { command, classroom });
-    return res.json({ message: "Command queued", payload });
+    await logActivity("command_issued", req.user, { command, classroom: cleanClassroom, commandId });
+    return res.json({ message: "Command queued", commandId, payload: legacyPayload });
   } catch (err) {
     return res.status(500).json({ error: "Failed to queue command", details: err.message });
   }
@@ -1745,36 +1757,292 @@ function generateClassSeed(className, cfg) {
   };
 }
 
+// -----------------------------------------------------------------------------
+// ESP32 device API
+// -----------------------------------------------------------------------------
+// These endpoints use the same ESP_SECRET shared key as /api/esp/write, but
+// expose only the operations the classroom controller actually needs.
+
+function getEspKey(req) {
+  return (
+    req.headers["x-esp-key"] ||
+    req.headers["x-api-key"] ||
+    (req.headers.authorization && String(req.headers.authorization).replace(/^Bearer\s+/i, "")) ||
+    req.query.esp_key ||
+    req.query.api_key ||
+    ""
+  );
+}
+
+function verifyEspKey(req, res) {
+  const espSecret = process.env.ESP_SECRET || process.env.ESP_KEY;
+  if (!espSecret) {
+    res.status(500).json({ error: "Server misconfigured: missing ESP_SECRET" });
+    return false;
+  }
+  const key = String(getEspKey(req));
+  if (!key || key !== String(espSecret)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
+
+function sanitizeDeviceId(value) {
+  return sanitizeForPath(normalizeText(value), "esp32_01").slice(0, 64);
+}
+
+app.get("/api/esp/config", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const classroom = normalizeClass(req.query.classroom) || DEFAULT_CLASSROOM;
+    const deviceId = sanitizeDeviceId(req.query.deviceId || "esp32_01");
+    const saved = (await dbGet(`devices/${deviceId}`, {})) || {};
+    const status = (await dbGet(`classroom_status/${classroom}`, {})) || {};
+    return res.json({
+      ok: true,
+      deviceId,
+      classroom,
+      maxCapacity: Number(saved.maxCapacity || 80),
+      heartbeatSeconds: Number(saved.heartbeatSeconds || 30),
+      crossingTimeoutMs: Number(saved.crossingTimeoutMs || 8000),
+      fingerprintEnabled: saved.fingerprintEnabled !== false,
+      offlineQueueEnabled: saved.offlineQueueEnabled !== false,
+      serverTime: new Date().toISOString(),
+      classroomStatus: status
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to fetch ESP config", details: err.message });
+  }
+});
+
+app.get("/api/esp/commands", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const classroom = normalizeClass(req.query.classroom) || DEFAULT_CLASSROOM;
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 10, 50));
+    const commandRoot = (await dbGet(`device_commands/${sanitizeForPath(classroom)}`, {})) || {};
+    const commands = Object.entries(commandRoot)
+      .map(([commandId, value]) => ({ commandId, ...(value || {}) }))
+      .filter((item) => item.classroom === classroom && item.status === "queued")
+      .sort((a, b) => String(a.createdAt || a.timestamp || "").localeCompare(String(b.createdAt || b.timestamp || "")))
+      .slice(0, limit);
+    return res.json({ ok: true, classroom, commands });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to fetch ESP commands", details: err.message });
+  }
+});
+
+app.post("/api/esp/command-ack", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const { commandId, classroom = DEFAULT_CLASSROOM, status, message, deviceId } = req.body || {};
+    const cleanClassroom = normalizeClass(classroom) || DEFAULT_CLASSROOM;
+    if (!commandId || !["received", "executed", "failed"].includes(status)) {
+      return res.status(400).json({ error: "commandId and valid status are required" });
+    }
+    const existing = await dbGet(`device_commands/${sanitizeForPath(cleanClassroom)}/${sanitizeForPath(commandId)}`, null);
+    if (!existing) return res.status(404).json({ error: "Command not found" });
+
+    const now = new Date().toISOString();
+    const patch = {
+      status,
+      acknowledgedAt: now,
+      deviceId: sanitizeDeviceId(deviceId),
+      message: normalizeText(message).slice(0, 300)
+    };
+    await dbUpdate(`device_commands/${sanitizeForPath(cleanClassroom)}/${sanitizeForPath(commandId)}`, patch);
+
+    if (existing.command && (status === "executed" || status === "failed")) {
+      await dbUpdate(`commands/${existing.command}`, { status, acknowledgedAt: now, deviceId: patch.deviceId, message: patch.message });
+    }
+    return res.json({ ok: true, commandId, status });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to acknowledge command", details: err.message });
+  }
+});
+
+app.post("/api/esp/status", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const body = req.body || {};
+    const deviceId = sanitizeDeviceId(body.deviceId);
+    const classroom = normalizeClass(body.classroom) || DEFAULT_CLASSROOM;
+    const now = new Date().toISOString();
+    const status = {
+      deviceId,
+      classroom,
+      online: true,
+      lastSeenAt: now,
+      firmwareVersion: normalizeText(body.firmwareVersion),
+      ip: normalizeText(body.ip),
+      freeHeap: Number(body.freeHeap || 0),
+      rssi: Number(body.rssi || 0),
+      occupancy: Math.max(0, Math.min(Number(body.occupancy || 0), 10000)),
+      barrierState: normalizeText(body.barrierState),
+      lectureState: normalizeText(body.lectureState),
+      wifiConnected: body.wifiConnected !== false,
+      sdReady: body.sdReady !== false,
+      fingerprintReady: body.fingerprintReady !== false,
+      updatedAt: now
+    };
+    await dbSet(`devices/${deviceId}/status`, status);
+    await dbUpdate(`classroom_status/${classroom}`, {
+      updatedAt: now,
+      occupancy: status.occupancy,
+      barrierState: status.barrierState,
+      deviceId
+    });
+    return res.json({ ok: true, serverTime: now });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to update ESP status", details: err.message });
+  }
+});
+
+app.get("/api/esp/timetable", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const classroom = normalizeClass(req.query.classroom) || DEFAULT_CLASSROOM;
+    const className = await resolveClassKey(classroom);
+    const full = (await dbGet(`timetable/${className}`, {})) || {};
+    const today = getTodayName();
+    const schedule = Array.isArray(full[today]) ? full[today] : [];
+    return res.json({
+      ok: true,
+      classroom,
+      className,
+      day: today,
+      schedule,
+      approval: full.approval || null,
+      fetchedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to fetch ESP timetable", details: err.message });
+  }
+});
+
+app.get("/api/esp/users", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const classroom = normalizeClass(req.query.classroom) || DEFAULT_CLASSROOM;
+    const targetClass = normalizeClassToken(classroom);
+    const users = (await dbGet("users", {})) || {};
+    const result = Object.entries(users)
+      .filter(([, user]) => user && typeof user === "object")
+      .filter(([, user]) => {
+        const role = normalizeRole(user.role);
+        if (!["student", "faculty", "cc", "hod", "admin"].includes(role)) return false;
+        if (role !== "student") return true;
+        return normalizeClassToken(user.className || user.class) === targetClass;
+      })
+      .map(([uid, user]) => ({
+        uid,
+        name: normalizeText(user.name),
+        role: normalizeRole(user.role),
+        className: normalizeText(user.className || user.class),
+        department: normalizeText(user.department),
+        rollNo: normalizeText(user.rollNo || user.id || uid),
+        fingerprintId: normalizeFingerprint(user.fingerprintEnrollmentId || user.fingerprintId)
+      }))
+      .filter((user) => user.name || user.fingerprintId);
+    return res.json({ ok: true, classroom, count: result.length, users: result, fetchedAt: new Date().toISOString() });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to fetch ESP users", details: err.message });
+  }
+});
+
+app.get("/api/esp/otp", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const classroom = normalizeClass(req.query.classroom) || DEFAULT_CLASSROOM;
+    const otp = (await dbGet(`manual_otp/${classroom}`, null)) || null;
+    if (!otp || otp.status !== "active" || (otp.expiresAt && new Date(otp.expiresAt).getTime() < Date.now())) {
+      return res.json({ ok: true, active: false, classroom });
+    }
+    return res.json({ ok: true, active: true, classroom, code: String(otp.code), expiresAt: otp.expiresAt });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to fetch OTP", details: err.message });
+  }
+});
+
+app.post("/api/esp/attendance", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const body = req.body || {};
+    const classroom = normalizeClass(body.classroom) || DEFAULT_CLASSROOM;
+    const fingerprintId = normalizeFingerprint(body.fingerprintId || body.fingerprintEnrollmentId);
+    const eventId = sanitizeDeviceId(body.eventId || `attendance_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
+    const timestamp = normalizeText(body.timestamp) || new Date().toISOString();
+    const crossingConfirmed = body.crossingConfirmed === true;
+    const attendanceMode = normalizeText(body.attendanceMode || "fingerprint");
+    if (!fingerprintId) return res.status(400).json({ error: "fingerprintId is required" });
+    if (!crossingConfirmed && attendanceMode === "fingerprint") {
+      return res.status(400).json({ error: "Physical crossing is not confirmed" });
+    }
+
+    const existingEvent = await dbGet(`attendance_events/${eventId}`, null);
+    if (existingEvent) return res.json({ ok: true, duplicate: true, eventId });
+
+    const [uid, user] = await findUserByFingerprint(fingerprintId);
+    if (!uid || !user) return res.status(404).json({ error: "Fingerprint is not registered" });
+
+    const role = normalizeRole(user.role);
+    if (role !== "student") return res.status(400).json({ error: "Only student fingerprints can create attendance" });
+
+    const userClass = normalizeClass(user.className || user.class) || classroom;
+    if (normalizeClassToken(userClass) !== normalizeClassToken(classroom)) {
+      return res.status(403).json({ error: "Student is not assigned to this classroom" });
+    }
+
+    const day = normalizeIsoDate(timestamp) || normalizeIsoDate(new Date());
+    const studentKey = sanitizeForPath(uid, sanitizeForPath(user.email, "student"));
+    const existingAttendance = (await dbGet(`attendance/${userClass}/students/${studentKey}`, {})) || {};
+    const record = {
+      ...existingAttendance,
+      rollNo: String(user.rollNo || user.id || studentKey).toUpperCase(),
+      name: normalizeText(user.name || "Unknown Student"),
+      status: normalizeText(body.status || "On Time"),
+      time: new Date(timestamp).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+      date: day,
+      attendanceMode,
+      fingerprintId,
+      crossingConfirmed: true,
+      classroom,
+      subject: normalizeText(body.subject),
+      faculty: normalizeText(body.faculty),
+      eventId
+    };
+
+    await dbSet(`attendance_events/${eventId}`, {
+      eventId,
+      uid,
+      fingerprintId,
+      classroom,
+      className: userClass,
+      name: record.name,
+      rollNo: record.rollNo,
+      attendanceMode,
+      crossingConfirmed: true,
+      timestamp,
+      subject: record.subject,
+      faculty: record.faculty,
+      deviceId: sanitizeDeviceId(body.deviceId)
+    });
+    await dbSet(`attendance/${userClass}/students/${studentKey}`, record);
+    const attendance = await buildAttendanceSummary(userClass);
+    await dbSet(`attendance/${userClass}/summary`, attendance.summary);
+
+    return res.status(201).json({ ok: true, eventId, uid, student: { name: record.name, rollNo: record.rollNo }, attendance: record });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to record ESP attendance", details: err.message });
+  }
+});
+
 // ESP32 / edge device helper endpoint
 // Allows authenticating using a simple shared secret instead of requiring Firebase tokens.
 app.post("/api/esp/write", async (req, res) => {
   try {
-    // Support multiple header variants and fallback query param for devices that can't set headers reliably
-    const key =
-      req.headers["x-esp-key"] ||
-      req.headers["x-api-key"] ||
-      (req.headers.authorization && String(req.headers.authorization).replace(/^Bearer\s+/i, "")) ||
-      req.query.esp_key ||
-      req.query.api_key;
-
-    const espSecret = process.env.ESP_SECRET || process.env.ESP_KEY;
-
-    if (!espSecret) {
-      console.error("ESP_SECRET is not set on the server. Set ESP_SECRET in .env.");
-      return res.status(500).json({ error: "Server misconfigured: missing ESP_SECRET" });
-    }
-
-    if (!key) {
-      return res.status(401).json({ error: "Unauthorized", reason: "Missing esp key (expected x-esp-key, x-api-key, Authorization: Bearer, or esp_key query)" });
-    }
-
-    // Log for debugging without leaking full key
-    const maskedKey = `${String(key).slice(0, 3)}...(${String(key).length})`;
-    console.log(`[ESP WRITE] key=${maskedKey} path=${req.body?.path || req.query?.path || "(none)"}`);
-
-    if (key !== espSecret) {
-      return res.status(401).json({ error: "Unauthorized", reason: "Invalid esp key", expectedLength: espSecret.length, receivedLength: String(key).length });
-    }
+    if (!verifyEspKey(req, res)) return;
 
     const { path, value } = req.body || {};
     if (!path || typeof path !== "string") {
