@@ -20,6 +20,56 @@ const COMMANDS = [
   "start_seminar",
   "half_day"
 ];
+const ROLE_PERMISSIONS = {
+  student: new Set(["view_own_profile", "view_own_attendance", "view_own_timetable"]),
+  faculty: new Set([
+    "view_own_profile",
+    "view_own_attendance",
+    "view_class_attendance",
+    "view_own_timetable",
+    "start_own_lecture",
+    "end_own_lecture",
+    "generate_otp",
+    "short_break",
+    "limited_classroom_control"
+  ]),
+  cc: new Set([
+    "view_own_profile",
+    "view_class_attendance",
+    "view_own_timetable",
+    "manage_timetable",
+    "view_reports"
+  ]),
+  hod: new Set([
+    "view_own_profile",
+    "view_class_attendance",
+    "view_own_timetable",
+    "start_own_lecture",
+    "end_own_lecture",
+    "generate_otp",
+    "short_break",
+    "limited_classroom_control",
+    "manage_users",
+    "manage_students",
+    "manage_faculty",
+    "manage_timetable",
+    "view_department_attendance",
+    "view_reports",
+    "view_alerts",
+    "monitor_devices",
+    "classroom_commands"
+  ]),
+  admin: new Set(["*"])
+};
+const COMMAND_PERMISSION = {
+  open_class: "limited_classroom_control",
+  end_lecture: "end_own_lecture",
+  short_break: "short_break",
+  emergency: "classroom_commands",
+  generate_otp: "generate_otp",
+  start_seminar: "classroom_commands",
+  half_day: "classroom_commands"
+};
 
 app.use(cors());
 app.use(express.json());
@@ -36,6 +86,41 @@ function normalizeEmail(value) {
 function normalizeRole(value) {
   const role = normalizeText(value).toLowerCase();
   return DASHBOARD_ROLES.includes(role) ? role : "student";
+}
+
+function hasPermission(user, permission) {
+  const permissions = ROLE_PERMISSIONS[normalizeRole(user?.role)] || ROLE_PERMISSIONS.student;
+  return permissions.has("*") || permissions.has(permission);
+}
+
+function requirePermission(permission) {
+  return (req, res, next) => {
+    if (!hasPermission(req.user, permission)) {
+      return res.status(403).json({ error: "Access denied for this permission" });
+    }
+    next();
+  };
+}
+
+function isActiveUser(user) {
+  return user && user.active !== false && user.disabled !== true;
+}
+
+function sanitizeUserProfile(uid, user = {}) {
+  const {
+    passwordHash,
+    password,
+    resetToken,
+    firebaseCustomToken,
+    serviceAccount,
+    ...safe
+  } = user || {};
+  return {
+    ...safe,
+    uid: uid || safe.uid || "",
+    role: normalizeRole(safe.role),
+    active: safe.active !== false
+  };
 }
 
 function normalizeClass(value) {
@@ -321,13 +406,23 @@ async function dbPush(pathName, value) {
 }
 
 async function logActivity(action, actor = {}, meta = {}) {
-  await dbPush("activity_log", {
+  const event = {
     action,
     actorUid: actor.uid || null,
     actorName: actor.name || actor.email || "Unknown User",
     actorRole: actor.role || "guest",
     meta,
     timestamp: new Date().toISOString()
+  };
+  const eventId = await dbPush("activity_log", event);
+  await dbSet(`audit_logs/${eventId}`, {
+    eventId,
+    actorUid: event.actorUid,
+    actorRole: event.actorRole,
+    action,
+    target: meta.target || meta.uid || meta.commandId || meta.eventId || meta.className || null,
+    timestamp: event.timestamp,
+    metadata: meta
   });
 }
 
@@ -495,7 +590,21 @@ async function authMiddleware(req, res, next) {
   if (!token) return res.status(401).json({ error: "Missing token" });
 
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const [uid, profile] = decoded.uid
+      ? [decoded.uid, await dbGet(`users/${decoded.uid}`, null)]
+      : await findUserByEmail(decoded.email || "");
+    if (!uid || !profile || !isActiveUser(profile)) {
+      return res.status(401).json({ error: "User account is inactive or not found" });
+    }
+    req.user = {
+      uid,
+      email: profile.email,
+      name: profile.name,
+      role: normalizeRole(profile.role),
+      department: profile.department || "",
+      className: profile.className || profile.class || ""
+    };
     return next();
   } catch (jwtErr) {
     const firebaseDecoded = await verifyFirebaseBearerToken(token);
@@ -504,8 +613,8 @@ async function authMiddleware(req, res, next) {
     }
 
     const [uid, profile] = await findUserByEmail(firebaseDecoded.email || "");
-    if (!uid || !profile) {
-      return res.status(401).json({ error: "User profile not found in database" });
+    if (!uid || !profile || !isActiveUser(profile)) {
+      return res.status(401).json({ error: "User account is inactive or not found" });
     }
 
     req.user = {
@@ -622,11 +731,7 @@ async function getEventsList() {
 
 async function getUsersList() {
   const users = (await dbGet("users", {})) || {};
-  return Object.entries(users).map(([uid, user]) => ({
-    uid,
-    ...user,
-    role: normalizeRole(user.role)
-  }));
+  return Object.entries(users).map(([uid, user]) => sanitizeUserProfile(uid, user));
 }
 
 async function getSyllabusList() {
@@ -785,7 +890,7 @@ app.get("/api/config", (_, res) => {
 app.get("/api/fingerprint/:fingerprintId", async (req, res) => {
   try {
     const [uid, user] = await findUserByFingerprint(req.params.fingerprintId);
-    if (!uid || !user) {
+    if (!uid || !user || !isActiveUser(user)) {
       return res.json({ exists: false });
     }
 
@@ -816,7 +921,7 @@ app.post("/api/auth/session", async (req, res) => {
     }
 
     const [uid, profile] = await findUserByEmail(decoded.email || "");
-    if (!uid || !profile) {
+    if (!uid || !profile || !isActiveUser(profile)) {
       return res.status(404).json({ error: "User profile not found. Complete signup first." });
     }
     if (expectedRole && normalizeRole(profile.role) !== expectedRole) {
@@ -827,11 +932,7 @@ app.post("/api/auth/session", async (req, res) => {
     await logActivity("session_created", { uid, ...profile }, {});
     return res.json({
       token: sessionToken,
-      user: {
-        uid,
-        ...profile,
-        role: normalizeRole(profile.role)
-      }
+      user: sanitizeUserProfile(uid, profile)
     });
   } catch (err) {
     return res.status(500).json({ error: "Failed to create session", details: err.message });
@@ -852,14 +953,16 @@ app.post("/api/auth/sync-profile", async (req, res) => {
     const [existingUid, fingerprintProfile] = fingerprintId ? await findUserByFingerprint(fingerprintId) : [null, null];
     const uid = existingUid || decoded.uid;
     const email = normalizeEmail(decoded.email || body.email || "");
-    const role = fingerprintProfile ? normalizeRole(fingerprintProfile.role) : normalizeRole(body.role);
+    const role = fingerprintProfile ? normalizeRole(fingerprintProfile.role) : "student";
     const className = normalizeClass(body.className || body.class) || "";
+    const current = (await dbGet(`users/${uid}`, {})) || {};
     const profile = {
       uid,
       name: fingerprintProfile?.name || normalizeText(body.name),
       email,
       role,
       fingerprintEnrollmentId: fingerprintId,
+      active: current.active !== false,
       department: fingerprintProfile?.department || normalizeText(body.department),
       className: fingerprintProfile?.className || fingerprintProfile?.class || className,
       class: fingerprintProfile?.className || fingerprintProfile?.class || className,
@@ -869,7 +972,6 @@ app.post("/api/auth/sync-profile", async (req, res) => {
       lastLoginAt: new Date().toISOString()
     };
 
-    const current = (await dbGet(`users/${uid}`, {})) || {};
     if (!profile.name) {
       return res.status(400).json({ error: "Name is required" });
     }
@@ -886,10 +988,7 @@ app.post("/api/auth/sync-profile", async (req, res) => {
     await logActivity("user_profile_synced", { uid, ...profile }, { role, className: profile.className });
     return res.status(201).json({
       message: "Profile synced",
-      user: {
-        uid,
-        ...profile
-      }
+      user: sanitizeUserProfile(uid, profile)
     });
   } catch (err) {
     return res.status(500).json({ error: "Failed to sync profile", details: err.message });
@@ -907,7 +1006,7 @@ app.post("/api/auth/signup", async (req, res) => {
     }
 
     const cleanEmail = normalizeEmail(email);
-    const cleanRole = normalizeRole(role || "admin");
+    const cleanRole = "student";
     const [uidFromEmail, existingEmail] = await findUserByEmail(cleanEmail);
     if (uidFromEmail && existingEmail) {
       return res.status(409).json({ error: "Account already exists" });
@@ -925,6 +1024,7 @@ app.post("/api/auth/signup", async (req, res) => {
       department: fingerprintProfile?.department || normalizeText(department),
       passwordHash: await bcrypt.hash(String(password), 10),
       role: fingerprintProfile?.role || cleanRole,
+      active: true,
       className: fingerprintProfile?.className || fingerprintProfile?.class || normalizeClass(className) || "",
       class: fingerprintProfile?.className || fingerprintProfile?.class || normalizeClass(className) || "",
       fingerprintEnrollmentId: fingerprintId,
@@ -950,6 +1050,10 @@ app.post("/api/auth/login", async (req, res) => {
     if (!uid || !account) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
+    if (!isActiveUser(account)) {
+      await logActivity("failed_login_inactive", { uid, ...account }, {});
+      return res.status(403).json({ error: "Account is inactive" });
+    }
 
     const isValid = await bcrypt.compare(String(password), account.passwordHash || "");
     if (!isValid) {
@@ -965,11 +1069,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     return res.json({
       token,
-      user: {
-        uid,
-        ...account,
-        role: normalizeRole(account.role)
-      },
+      user: sanitizeUserProfile(uid, account),
       admin: {
         name: account.name,
         username: account.username,
@@ -989,11 +1089,7 @@ app.get("/api/me", authMiddleware, async (req, res) => {
   }
 
   return res.json({
-    user: {
-      uid,
-      ...profile,
-      role: normalizeRole(profile.role)
-    }
+    user: sanitizeUserProfile(uid, profile)
   });
 });
 
@@ -1126,9 +1222,8 @@ app.post("/api/control/command", authMiddleware, async (req, res) => {
     }
 
     const role = normalizeRole(req.user?.role);
-    const canIssueCommand = ["faculty", "admin", "hod"].includes(role);
-    const canIssueStudentOtp = role === "student" && command === "generate_otp";
-    if (!canIssueCommand && !canIssueStudentOtp) {
+    const permission = COMMAND_PERMISSION[command] || "classroom_commands";
+    if (!hasPermission(req.user, permission)) {
       return res.status(403).json({ error: "Access denied for this command" });
     }
 
@@ -1138,8 +1233,10 @@ app.post("/api/control/command", authMiddleware, async (req, res) => {
       classroom: cleanClassroom,
       issuedBy: req.user.name,
       issuedByUid: req.user.uid || null,
+      createdBy: req.user.uid || null,
+      createdByRole: role,
       role,
-      status: "queued",
+      status: "pending",
       timestamp: now,
       createdAt: now,
       payload: commandPayload && typeof commandPayload === "object" ? commandPayload : {}
@@ -1151,7 +1248,7 @@ app.post("/api/control/command", authMiddleware, async (req, res) => {
       classroom: cleanClassroom,
       issuedBy: req.user.name,
       role,
-      status: "queued",
+      status: "pending",
       timestamp: now,
       commandId
     };
@@ -1588,11 +1685,131 @@ app.post("/api/alerts", authMiddleware, requireRoles(["admin", "hod"]), async (r
   }
 });
 
-app.get("/api/users", authMiddleware, requireRoles(["admin", "hod"]), async (_, res) => {
+app.get("/api/users", authMiddleware, requireRoles(["admin", "hod"]), async (req, res) => {
   try {
-    return res.json({ users: await getUsersList() });
+    let users = await getUsersList();
+    if (normalizeRole(req.user.role) === "hod") {
+      const department = normalizeText(req.user.department);
+      users = users.filter((user) =>
+        ["student", "faculty", "cc"].includes(normalizeRole(user.role)) &&
+        (!department || normalizeText(user.department) === department)
+      );
+    }
+    return res.json({ users });
   } catch (err) {
     return res.status(500).json({ error: "Failed to fetch users", details: err.message });
+  }
+});
+
+app.post("/api/users", authMiddleware, requirePermission("manage_users"), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const actorRole = normalizeRole(req.user.role);
+    const role = normalizeRole(body.role || "student");
+    if (actorRole === "hod" && !["student", "faculty", "cc"].includes(role)) {
+      return res.status(403).json({ error: "HOD can create only student, faculty, or CC users" });
+    }
+
+    const name = normalizeText(body.name);
+    const email = normalizeEmail(body.email);
+    const department = normalizeText(body.department || req.user.department);
+    const className = normalizeClass(body.className || body.class) || "";
+    const password = String(body.password || "");
+    if (!name || !email || !department || !role) {
+      return res.status(400).json({ error: "Name, email, department and role are required" });
+    }
+    if (password && !isStrongPassword(password)) {
+      return res.status(400).json({ error: "Password must be at least 8 characters and include alphabets, numbers, and special characters." });
+    }
+
+    const [existingUid] = await findUserByEmail(email);
+    if (existingUid) return res.status(409).json({ error: "User email already exists" });
+
+    const uid = sanitizeForPath(body.uid || body.username || email.split("@")[0], `user_${Date.now()}`);
+    const current = await dbGet(`users/${uid}`, null);
+    if (current) return res.status(409).json({ error: "User uid already exists" });
+
+    const user = {
+      uid,
+      name,
+      email,
+      username: sanitizeForPath(body.username || uid),
+      role,
+      active: body.active !== false,
+      department,
+      className,
+      class: className,
+      studentId: normalizeText(body.studentId),
+      facultyId: normalizeText(body.facultyId),
+      phone: normalizeText(body.phone),
+      fingerprintEnrollmentId: normalizeFingerprint(body.fingerprintEnrollmentId || body.fingerprintId),
+      createdAt: new Date().toISOString(),
+      createdBy: req.user.uid || null
+    };
+    if (password) user.passwordHash = await bcrypt.hash(password, 10);
+
+    await dbSet(`users/${uid}`, user);
+    await logActivity("user_created", req.user, { uid, role, target: uid });
+    return res.status(201).json({ user: sanitizeUserProfile(uid, user) });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to create user", details: err.message });
+  }
+});
+
+app.patch("/api/users/:uid", authMiddleware, requirePermission("manage_users"), async (req, res) => {
+  try {
+    const targetUid = sanitizeForPath(req.params.uid);
+    const current = (await dbGet(`users/${targetUid}`, null)) || null;
+    if (!current) return res.status(404).json({ error: "User not found" });
+
+    const actorRole = normalizeRole(req.user.role);
+    const currentRole = normalizeRole(current.role);
+    const requestedRole = req.body?.role !== undefined ? normalizeRole(req.body.role) : currentRole;
+    if (targetUid === req.user.uid && requestedRole !== currentRole) {
+      return res.status(403).json({ error: "You cannot change your own role" });
+    }
+    if (actorRole === "hod" && (!["student", "faculty", "cc"].includes(currentRole) || !["student", "faculty", "cc"].includes(requestedRole))) {
+      return res.status(403).json({ error: "HOD can manage only student, faculty, or CC users" });
+    }
+
+    const patch = {
+      updatedAt: new Date().toISOString(),
+      updatedBy: req.user.uid || null
+    };
+    if (req.body?.name !== undefined) patch.name = normalizeText(req.body.name);
+    if (req.body?.department !== undefined) patch.department = normalizeText(req.body.department);
+    if (req.body?.className !== undefined || req.body?.class !== undefined) {
+      patch.className = normalizeClass(req.body.className || req.body.class) || "";
+      patch.class = patch.className;
+    }
+    if (req.body?.role !== undefined) patch.role = requestedRole;
+    if (req.body?.active !== undefined) patch.active = Boolean(req.body.active);
+    if (req.body?.studentId !== undefined) patch.studentId = normalizeText(req.body.studentId);
+    if (req.body?.facultyId !== undefined) patch.facultyId = normalizeText(req.body.facultyId);
+    if (req.body?.phone !== undefined) patch.phone = normalizeText(req.body.phone);
+    if (req.body?.fingerprintEnrollmentId !== undefined || req.body?.fingerprintId !== undefined) {
+      patch.fingerprintEnrollmentId = normalizeFingerprint(req.body.fingerprintEnrollmentId || req.body.fingerprintId);
+    }
+    if (req.body?.email !== undefined) {
+      const email = normalizeEmail(req.body.email);
+      const [emailUid] = await findUserByEmail(email);
+      if (emailUid && emailUid !== targetUid) return res.status(409).json({ error: "User email already exists" });
+      patch.email = email;
+    }
+    if (req.body?.password) {
+      const password = String(req.body.password);
+      if (!isStrongPassword(password)) {
+        return res.status(400).json({ error: "Password must be at least 8 characters and include alphabets, numbers, and special characters." });
+      }
+      patch.passwordHash = await bcrypt.hash(password, 10);
+    }
+
+    await dbUpdate(`users/${targetUid}`, patch);
+    const next = { ...current, ...patch };
+    await logActivity("user_updated", req.user, { uid: targetUid, role: next.role, active: next.active, target: targetUid });
+    return res.json({ user: sanitizeUserProfile(targetUid, next) });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to update user", details: err.message });
   }
 });
 
@@ -1824,7 +2041,7 @@ app.get("/api/esp/commands", async (req, res) => {
     const commandRoot = (await dbGet(`device_commands/${sanitizeForPath(classroom)}`, {})) || {};
     const commands = Object.entries(commandRoot)
       .map(([commandId, value]) => ({ commandId, ...(value || {}) }))
-      .filter((item) => item.classroom === classroom && item.status === "queued")
+      .filter((item) => item.classroom === classroom && ["pending", "queued"].includes(item.status))
       .sort((a, b) => String(a.createdAt || a.timestamp || "").localeCompare(String(b.createdAt || b.timestamp || "")))
       .slice(0, limit);
     return res.json({ ok: true, classroom, commands });
@@ -1929,6 +2146,7 @@ app.get("/api/esp/users", async (req, res) => {
     const users = (await dbGet("users", {})) || {};
     const result = Object.entries(users)
       .filter(([, user]) => user && typeof user === "object")
+      .filter(([, user]) => isActiveUser(user))
       .filter(([, user]) => {
         const role = normalizeRole(user.role);
         if (!["student", "faculty", "cc", "hod", "admin"].includes(role)) return false;
@@ -1939,6 +2157,9 @@ app.get("/api/esp/users", async (req, res) => {
         uid,
         name: normalizeText(user.name),
         role: normalizeRole(user.role),
+        active: user.active !== false,
+        studentId: normalizeText(user.studentId || user.rollNo || user.id || uid),
+        facultyId: normalizeText(user.facultyId),
         className: normalizeText(user.className || user.class),
         department: normalizeText(user.department),
         rollNo: normalizeText(user.rollNo || user.id || uid),

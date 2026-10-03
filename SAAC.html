@@ -963,9 +963,28 @@
           <div class="col-lg-8">
             <div class="panel-card mb-3" id="userMgmtPanel">
               <h3 class="h5 mb-3">User Management</h3>
+              <div class="row g-2 mb-3">
+                <div class="col-md-6"><input id="userName" class="form-control" placeholder="Full name"></div>
+                <div class="col-md-6"><input id="userEmail" class="form-control" type="email" placeholder="Email"></div>
+                <div class="col-md-4"><input id="userPassword" class="form-control" type="password" placeholder="Initial password"></div>
+                <div class="col-md-4">
+                  <select id="userRole" class="form-select">
+                    <option value="student">Student</option>
+                    <option value="faculty">Faculty</option>
+                    <option value="cc">CC</option>
+                    <option value="hod">HOD</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div class="col-md-4"><input id="userDepartment" class="form-control" placeholder="Department"></div>
+                <div class="col-md-6"><input id="userClass" class="form-control" placeholder="Classroom / class"></div>
+                <div class="col-md-6"><input id="userFingerprint" class="form-control" placeholder="Fingerprint ID"></div>
+                <div class="col-12"><button id="createUserBtn" class="btn btn-primary w-100" type="button">Create User</button></div>
+              </div>
+              <div id="userMessage" class="small-note mb-3"></div>
               <div class="table-responsive">
                 <table class="table align-middle">
-                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Class</th><th>Fingerprint ID</th></tr></thead>
+                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Class</th><th>Fingerprint ID</th><th>Status</th><th>Action</th></tr></thead>
                   <tbody id="usersBody"></tbody>
                 </table>
               </div>
@@ -1098,7 +1117,7 @@
         "syllabusBtn", "syllabusMessage", "syllabusList", "otpPanel", "syllabusPanel", "feedbackStudentPanel", "feedbackToggleBtn", "feedbackStudentStatus",
         "feedbackStudentForm", "feedbackPrompt", "feedbackSuggestions", "feedbackSubjectCount", "feedbackSubjectForms", "feedbackSubmitBtn", "feedbackStudentMessage",
         "userMgmtPanel", "feedbackControlPanel", "feedbackEnabled", "feedbackFormTitle", "feedbackFormPrompt", "feedbackSuggestionsInput", "feedbackConfigBtn", "feedbackControlMessage",
-        "facultySyllabusPanel", "facultySyllabusBody", "dailySyllabusPanel", "dailySyllabusBody", "feedbackReviewPanel", "feedbackReviewBody", "feedbackReviewNote", "activityLogPanel", "usersBody", "activityBody", "logoutBtn",
+        "facultySyllabusPanel", "facultySyllabusBody", "dailySyllabusPanel", "dailySyllabusBody", "feedbackReviewPanel", "feedbackReviewBody", "feedbackReviewNote", "activityLogPanel", "usersBody", "userName", "userEmail", "userPassword", "userRole", "userDepartment", "userClass", "userFingerprint", "createUserBtn", "userMessage", "activityBody", "logoutBtn",
         "riskPredictionBoard", "reliabilityBoard", "syllabusKpiGrid", "dailySyllabusFeed", "syllabusTimelineChart"
       ].forEach((id) => {
         els[id] = document.getElementById(id);
@@ -2890,6 +2909,62 @@
         : "No command sent yet.";
     }
 
+    function renderUsersTable(users = []) {
+      els.usersBody.innerHTML = users.length
+        ? users.map((user) => {
+            const active = user.active !== false;
+            return `<tr><td>${user.name || "-"}</td><td>${user.email || "-"}</td><td>${user.role}</td><td>${user.department || "-"}</td><td>${user.className || user.class || "-"}</td><td>${user.fingerprintEnrollmentId || "-"}</td><td>${active ? "Active" : "Inactive"}</td><td><button class="btn btn-outline-primary btn-sm" type="button" data-user-active="${user.uid}" data-active="${active ? "false" : "true"}">${active ? "Deactivate" : "Activate"}</button></td></tr>`;
+          }).join("")
+        : "<tr><td colspan='8'>No users found.</td></tr>";
+      document.querySelectorAll("[data-user-active]").forEach((button) => {
+        button.addEventListener("click", () => updateUserActive(button.dataset.userActive, button.dataset.active === "true"));
+      });
+    }
+
+    async function loadUsersForSettings() {
+      const users = await api("/api/users");
+      renderUsersTable(users.users || []);
+    }
+
+    async function createManagedUser() {
+      const payload = {
+        name: els.userName.value.trim(),
+        email: els.userEmail.value.trim(),
+        password: els.userPassword.value,
+        role: els.userRole.value,
+        department: els.userDepartment.value.trim(),
+        className: els.userClass.value.trim(),
+        fingerprintEnrollmentId: els.userFingerprint.value.trim()
+      };
+      if (!payload.name || !payload.email || !payload.department || !payload.password) {
+        setMessage(els.userMessage, "Name, email, department, and initial password are required.", "error");
+        return;
+      }
+      try {
+        await api("/api/users", { method: "POST", body: JSON.stringify(payload) });
+        ["userName", "userEmail", "userPassword", "userClass", "userFingerprint"].forEach((key) => {
+          if (els[key]) els[key].value = "";
+        });
+        setMessage(els.userMessage, "User created.", "ok");
+        await loadUsersForSettings();
+      } catch (error) {
+        setMessage(els.userMessage, error.message, "error");
+      }
+    }
+
+    async function updateUserActive(uid, active) {
+      try {
+        await api(`/api/users/${encodeURIComponent(uid)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ active })
+        });
+        setMessage(els.userMessage, active ? "User activated." : "User deactivated.", "ok");
+        await loadUsersForSettings();
+      } catch (error) {
+        setMessage(els.userMessage, error.message, "error");
+      }
+    }
+
     async function loadSettings() {
       hydrateSyllabusForm();
       try {
@@ -2914,12 +2989,9 @@
 
       if (["admin", "hod"].includes(state.user.role)) {
         try {
-          const users = await api("/api/users");
-          els.usersBody.innerHTML = users.users.length
-            ? users.users.map((user) => `<tr><td>${user.name}</td><td>${user.email}</td><td>${user.role}</td><td>${user.department || "-"}</td><td>${user.className || user.class || "-"}</td><td>${user.fingerprintEnrollmentId || "-"}</td></tr>`).join("")
-            : "<tr><td colspan='6'>No users found.</td></tr>";
+          await loadUsersForSettings();
         } catch (error) {
-          els.usersBody.innerHTML = `<tr><td colspan='6'>${error.message}</td></tr>`;
+          els.usersBody.innerHTML = `<tr><td colspan='8'>${error.message}</td></tr>`;
         }
 
         try {
@@ -2931,7 +3003,7 @@
           els.activityBody.innerHTML = `<tr><td colspan='4'>${error.message}</td></tr>`;
         }
       } else {
-        els.usersBody.innerHTML = "<tr><td colspan='6'>User management is available only for HOD and admin.</td></tr>";
+        els.usersBody.innerHTML = "<tr><td colspan='8'>User management is available only for HOD and admin.</td></tr>";
         els.activityBody.innerHTML = "<tr><td colspan='4'>Activity log is available only for HOD and admin.</td></tr>";
       }
 
@@ -3326,6 +3398,7 @@
       els.feedbackToggleBtn.addEventListener("click", toggleFeedbackForm);
       els.feedbackSubmitBtn.addEventListener("click", submitFeedback);
       els.feedbackConfigBtn.addEventListener("click", saveFeedbackConfig);
+      els.createUserBtn.addEventListener("click", createManagedUser);
       els.toggleTimetableFormBtn.addEventListener("click", () => setTimetableFormVisibility(!state.timetableFormOpen));
       els.saveTimetableBtn.addEventListener("click", saveTimetableEntry);
       els.timetableSuggestionMode.addEventListener("change", async (event) => {
