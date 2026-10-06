@@ -79,8 +79,8 @@ public:
 
   // --- Non-blocking Directional Crossing State Machine (Section 6 & 7) ---
   void update(unsigned long now) {
-    // 1. Emergency safety priority: optical logic disabled
-    if (accessManager.isEmergency()) {
+    // 1. Emergency or Enrollment priority: optical logic disabled
+    if (accessManager.isEmergency() || state.currentMode == MODE_ENROLL) {
       if (state.pendingSession.authorized) clearPending();
       beamState = BEAM_IDLE;
       return;

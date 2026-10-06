@@ -145,6 +145,11 @@ public:
 
   // --- Non-blocking Update (Barrier Hold Timing) ---
   void update(unsigned long now) {
+    if (state.currentMode == MODE_ENROLL) {
+      if (barrierIsOpen) setBarrier(false); // Strictly locked at 0 deg during biometric enrollment
+      return;
+    }
+
     if (state.currentMode == MODE_EMERGENCY) {
       if (!barrierIsOpen) setBarrier(true); // Force barrier open for evacuation egress
       return;

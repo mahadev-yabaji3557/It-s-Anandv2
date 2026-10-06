@@ -1143,8 +1143,9 @@
       ["end_lecture", "End Lecture", ["faculty", "hod", "admin"], "btn-outline-primary"],
       ["start_short_break", "Start Short Break", ["faculty", "hod", "admin"], "btn-outline-warning"],
       ["end_short_break", "End Short Break", ["faculty", "hod", "admin"], "btn-outline-info"],
+      ["open_class", "Attendance Demo Mode (Viva)", ["faculty", "hod", "admin"], "btn-primary"],
+      ["admin_override", "Live Mode (Full System)", ["admin", "hod", "faculty"], "btn-outline-success"],
       ["generate_otp", "Generate Student OTP", ["faculty", "hod", "admin"], "btn-outline-secondary"],
-      ["open_class", "Open Classroom", ["faculty", "hod", "admin"], "btn-outline-dark"],
       ["start_seminar", "Start Seminar", ["hod", "admin"], "btn-outline-secondary"],
       ["half_day", "Half Day Notice", ["hod", "admin"], "btn-outline-secondary"]
     ];
@@ -2218,7 +2219,7 @@
               studentOtpLiveFeedback.innerHTML = '<span class="text-muted">Requesting OTP from server...</span>';
               const res = await api("/api/manual-otp/request", {
                 method: "POST",
-                body: JSON.stringify({ classroom: "CSE-A" })
+                body: JSON.stringify({ classroom: "Electrical-A" })
               });
               if (studentOtpInput) studentOtpInput.value = res.otp;
               studentOtpLiveFeedback.innerHTML = `<span class="text-success fw-semibold">&#10003; Fallback OTP: <strong>${res.otp}</strong> (Expires at ${new Date(res.expiresAt).toLocaleTimeString()}). Click 'Authorize Entry' or use the keypad.</span>`;
@@ -2239,7 +2240,7 @@
               studentOtpLiveFeedback.innerHTML = '<span class="text-muted">Verifying OTP with backend...</span>';
               const res = await api("/api/manual-otp/verify", {
                 method: "POST",
-                body: JSON.stringify({ classroom: "CSE-A", otp: code })
+                body: JSON.stringify({ classroom: "Electrical-A", otp: code })
               });
               studentOtpLiveFeedback.innerHTML = `<span class="text-success fw-semibold">&#10003; ${res.message}</span>`;
             } catch (err) {
@@ -3559,7 +3560,7 @@
             title: els.alertTitle.value.trim(),
             message: els.alertMessageInput.value.trim(),
             severity: els.alertSeverity.value,
-            classroom: "CSE-A"
+            classroom: "Electrical-A"
           })
         });
         setMessage(els.alertFormMessage, "Alert written to Firebase.", "ok");
@@ -3573,7 +3574,7 @@
       try {
         const response = await api("/api/manual-otp/verify", {
           method: "POST",
-          body: JSON.stringify({ classroom: "CSE-A", otp: els.otpInput.value.trim() })
+          body: JSON.stringify({ classroom: "Electrical-A", otp: els.otpInput.value.trim() })
         });
         setMessage(els.otpMessage, response.message, "ok");
         await loadAttendance();
@@ -3586,7 +3587,7 @@
       try {
         const response = await api("/api/control/command", {
           method: "POST",
-          body: JSON.stringify({ command: "generate_otp", classroom: "CSE-A" })
+          body: JSON.stringify({ command: "generate_otp", classroom: "Electrical-A" })
         });
         setMessage(els.otpMessage, `${response.message}. Check the classroom display for the OTP.`, "ok");
       } catch (error) {

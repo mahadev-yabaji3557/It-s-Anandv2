@@ -1574,6 +1574,33 @@ app.get("/api/control/status", authMiddleware, requireRoles(["faculty", "admin",
   }
 });
 
+app.get("/api/classrooms/monitor", authMiddleware, async (_, res) => {
+  try {
+    const status = (await dbGet("classroom_status", {})) || {};
+    const attendanceSY = await buildAttendanceSummary("SY");
+    const classrooms = {};
+
+    const targetRooms = Object.keys(status).length ? Object.keys(status) : ["Electrical-A", "CSE-A"];
+    for (const room of targetRooms) {
+      const roomStatus = status[room] || {};
+      const presentCount = attendanceSY.summary?.present || 0;
+      const insideCount = roomStatus.occupancy ?? 0;
+      classrooms[room] = {
+        classroom: room,
+        lectureStatus: roomStatus.lectureState || roomStatus.lectureStatus || "Idle",
+        studentsPresent: presentCount,
+        studentsInside: insideCount,
+        doorStatus: roomStatus.barrierState || roomStatus.doorStatus || "Locked",
+        alerts: roomStatus.alerts || (roomStatus.emergencyActive ? "Emergency Alert" : "Normal"),
+        currentLecture: roomStatus.activeSubject || roomStatus.currentLecture || "General Session"
+      };
+    }
+    return res.json({ ok: true, classrooms });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to fetch classroom monitor", details: err.message });
+  }
+});
+
 app.get("/api/events", authMiddleware, async (req, res) => {
   try {
     return res.json({ events: filterItemsByClassroom(await getEventsList(), req.user) });

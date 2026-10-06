@@ -48,6 +48,17 @@ void WifiApiManager::updateCommands(unsigned long now) {
             acknowledgeCommand(cmdId, "failed", "Cannot override while Emergency is active");
           }
         }
+        // 3b. OPEN CLASSROOM (Immediate Barrier Unlock / Viva Demo Mode)
+        else if (command == "open_class") {
+          if (!accessManager.isEmergency()) {
+            accessManager.openBarrier();
+            lcd.showMessage("DOOR UNLOCKED   ", "PASSAGE ALLOWED ", 3000);
+            buzzer.beepGrant();
+            acknowledgeCommand(cmdId, "executed", "Classroom barrier opened");
+          } else {
+            acknowledgeCommand(cmdId, "failed", "Cannot open barrier during Emergency");
+          }
+        }
         // 4. SHORT BREAK COMMAND (Start / End)
         else if (command == "start_short_break" || command == "short_break") {
           if (!accessManager.isEmergency()) {

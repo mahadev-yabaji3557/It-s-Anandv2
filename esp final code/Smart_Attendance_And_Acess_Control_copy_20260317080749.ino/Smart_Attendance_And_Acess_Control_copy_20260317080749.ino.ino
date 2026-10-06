@@ -110,7 +110,14 @@ void loop() {
   wifiApiManager.updateWifi(now);
 
   // 3. Update fingerprint state machine (scanning, verification, & enrollment)
-  fingerprintManager.update(now);
+  fingerprintManager.update(now,
+    [&](const String& id, const String& status, const String& msg) {
+      wifiApiManager.acknowledgeCommand(id, status, msg);
+    },
+    [&](int slot, const String& sId, const String& uUid, const String& cId) {
+      wifiApiManager.reportEnrollResult(slot, sId, uUid, cId);
+    }
+  );
 
   // 4. Update beam / crossing state machine (unauthorized rejection & transit confirmation)
   beamManager.update(now);
@@ -130,6 +137,10 @@ void loop() {
   // 8. Send periodic device telemetry heartbeat (POST /api/esp/status)
   wifiApiManager.updateTelemetry(now);
 
-  // 9. Update LCD display overlay hold timers
-  lcdManager.update(now);
+  // 9. Update LCD display overlay hold timers and auto-restore live screen
+  const char* modeText = (systemState.currentMode == MODE_BREAK) ? "SHORT BREAK" :
+                         (systemState.currentMode == MODE_LECTURE) ? (systemState.activeSubject.length() ? systemState.activeSubject.c_str() : "LECTURE IN PROG") :
+                         (systemState.currentMode == MODE_EMERGENCY) ? "EMERGENCY" :
+                         "SCAN FINGER/OTP";
+  lcdManager.update(now, systemState.occupancy, MAX_CLASSROOM_CAPACITY, modeText);
 }

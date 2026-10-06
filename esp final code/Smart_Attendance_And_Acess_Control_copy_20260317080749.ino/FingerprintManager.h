@@ -269,9 +269,11 @@ public:
   }
 
   // --- Main Non-blocking Update ---
-  void update(unsigned long now) {
+  void update(unsigned long now,
+              std::function<void(const String&, const String&, const String&)> ackCallback = nullptr,
+              std::function<void(int, const String&, const String&, const String&)> resultCallback = nullptr) {
     if (enrollmentActive) {
-      handleEnrollmentStep(now);
+      handleEnrollmentStep(now, ackCallback, resultCallback);
       return;
     }
 

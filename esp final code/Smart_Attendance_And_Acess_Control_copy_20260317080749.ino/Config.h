@@ -77,8 +77,8 @@
 #define BEAM_SEQUENCE_WINDOW_MS     3000  // Max time between breaking Beam 1 and Beam 2 during transit
 #define CROSSING_SEQUENCE_WINDOW_MS BEAM_SEQUENCE_WINDOW_MS // Alias
 #define BARRIER_HOLD_TIME_MS        4000  // How long barrier stays open before auto-closing (independent of 8s crossing timeout)
-#define COMMAND_POLL_INTERVAL_MS    2000  // Poll backend command queue every 2 seconds
-#define TELEMETRY_HEARTBEAT_MS      30000 // Send device telemetry every 30 seconds
+#define COMMAND_POLL_INTERVAL_MS    800   // Instant fast command polling (800ms) for real-time button response
+#define TELEMETRY_HEARTBEAT_MS      15000 // Fast telemetry heartbeat (15 seconds) for live occupancy updates
 #define OFFLINE_SYNC_INTERVAL_MS    15000 // Retry offline queue flush every 15 seconds
 
 // ------------------------------------------------------------------------------

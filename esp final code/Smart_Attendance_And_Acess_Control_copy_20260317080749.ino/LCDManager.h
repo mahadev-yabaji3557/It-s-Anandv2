@@ -163,9 +163,21 @@ public:
     showMessage("UNAUTHORIZED!   ", "ACCESS DENIED   ", 2500);
   }
 
-  void update(unsigned long now) {
-    if (isOverlayActive && now >= messageHoldUntil) {
-      isOverlayActive = false;
+  void showIdleScreen(int occupancy, int maxCap, const char* modeStr = nullptr) {
+    if (isHoldingOverlay()) return;
+    char line1[17];
+    char line2[17];
+    snprintf(line1, sizeof(line1), "%-11.11s %2d/%-2d", CLASSROOM_ID, occupancy, maxCap);
+    snprintf(line2, sizeof(line2), "%-16.16s", modeStr ? modeStr : "SCAN FINGER / OK");
+    showMessage(line1, line2);
+  }
+
+  void update(unsigned long now, int occupancy = 0, int maxCap = MAX_CLASSROOM_CAPACITY, const char* modeStr = "SCAN FINGER / OK") {
+    if (isOverlayActive) {
+      if (now >= messageHoldUntil) {
+        isOverlayActive = false;
+        showIdleScreen(occupancy, maxCap, modeStr);
+      }
     }
   }
 };
