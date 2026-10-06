@@ -62,7 +62,7 @@
 
 // Render Backend URL and Classroom identifier
 #define BACKEND_BASE_URL            "https://it-s-anandv2.onrender.com"
-#define CLASSROOM_ID                "CSE-A"
+#define CLASSROOM_ID                "Electrical-A"
 #define DEVICE_ID                   "esp32_01"
 #define FIRMWARE_VERSION            "2.3.0-production"
 

@@ -10,7 +10,7 @@ const { getDb, getAuth } = require("./src/firebaseAdmin");
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_in_env";
-const DEFAULT_CLASSROOM = "CSE-A";
+const DEFAULT_CLASSROOM = "Electrical-A";
 const DASHBOARD_ROLES = ["student", "faculty", "cc", "admin", "hod"];
 const COMMANDS = [
   "open_class",
@@ -2512,7 +2512,8 @@ app.get("/api/esp/users", async (req, res) => {
         const role = normalizeRole(user.role);
         if (!["student", "faculty", "cc", "hod", "admin"].includes(role)) return false;
         if (role !== "student") return true;
-        return normalizeClassToken(user.className || user.class) === targetClass;
+        const uClass = normalizeClassToken(user.className || user.class);
+        return !uClass || uClass === targetClass || ["SY", "TY", "BE", "ELECTRICAL", "ELECTRICAL-A", "CSE", "CSE-A"].includes(uClass);
       })
       .map(([uid, user]) => ({
         uid,
