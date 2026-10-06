@@ -4,6 +4,7 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const path = require("path");
+const crypto = require("crypto");
 const { getDb, getAuth } = require("./src/firebaseAdmin");
 
 const app = express();
@@ -13,10 +14,18 @@ const DEFAULT_CLASSROOM = "CSE-A";
 const DASHBOARD_ROLES = ["student", "faculty", "cc", "admin", "hod"];
 const COMMANDS = [
   "open_class",
+  "start_lecture",
   "end_lecture",
+  "start_short_break",
+  "end_short_break",
   "short_break",
   "emergency",
+  "reset_emergency",
+  "admin_override",
   "generate_otp",
+  "otp_access",
+  "enroll_fingerprint",
+  "delete_fingerprint",
   "start_seminar",
   "half_day"
 ];
@@ -63,13 +72,24 @@ const ROLE_PERMISSIONS = {
 };
 const COMMAND_PERMISSION = {
   open_class: "limited_classroom_control",
+  start_lecture: "start_own_lecture",
   end_lecture: "end_own_lecture",
+  start_short_break: "short_break",
+  end_short_break: "short_break",
   short_break: "short_break",
   emergency: "classroom_commands",
+  reset_emergency: "classroom_commands",
+  admin_override: "admin_override",
   generate_otp: "generate_otp",
+  otp_access: "view_own_attendance",
+  enroll_fingerprint: "fingerprint_enrollment",
+  delete_fingerprint: "fingerprint_enrollment",
   start_seminar: "classroom_commands",
   half_day: "classroom_commands"
 };
+const COMMAND_TTL_MS = 5 * 60 * 1000;
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
 
 app.use(cors());
 app.use(express.json());
@@ -106,21 +126,26 @@ function isActiveUser(user) {
   return user && user.active !== false && user.disabled !== true;
 }
 
-function sanitizeUserProfile(uid, user = {}) {
+function sanitizeUserProfile(uid, user = {}, viewerRole = null) {
   const {
     passwordHash,
     password,
     resetToken,
     firebaseCustomToken,
     serviceAccount,
+    assignedPassword,
     ...safe
   } = user || {};
-  return {
+  const result = {
     ...safe,
     uid: uid || safe.uid || "",
     role: normalizeRole(safe.role),
     active: safe.active !== false
   };
+  if (normalizeRole(viewerRole) === "admin" && (assignedPassword || user?.assignedPassword)) {
+    result.assignedPassword = assignedPassword || user?.assignedPassword;
+  }
+  return result;
 }
 
 function normalizeClass(value) {
@@ -138,6 +163,21 @@ function normalizeFingerprint(value) {
   const id = normalizeText(value);
   if (!id) return "";
   return id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32);
+}
+
+function hashOtp(value) {
+  return crypto
+    .createHmac("sha256", JWT_SECRET)
+    .update(String(value || ""))
+    .digest("hex");
+}
+
+function generateOtpCode() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+function normalizeCommandPayload(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
 function isStrongPassword(value) {
@@ -405,13 +445,26 @@ async function dbPush(pathName, value) {
   return ref.key;
 }
 
+function stripUndefined(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(stripUndefined);
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      out[k] = typeof v === "object" ? stripUndefined(v) : v;
+    }
+  }
+  return out;
+}
+
 async function logActivity(action, actor = {}, meta = {}) {
+  const safeMeta = stripUndefined(meta || {});
   const event = {
     action,
     actorUid: actor.uid || null,
     actorName: actor.name || actor.email || "Unknown User",
     actorRole: actor.role || "guest",
-    meta,
+    meta: safeMeta,
     timestamp: new Date().toISOString()
   };
   const eventId = await dbPush("activity_log", event);
@@ -422,7 +475,7 @@ async function logActivity(action, actor = {}, meta = {}) {
     action,
     target: meta.target || meta.uid || meta.commandId || meta.eventId || meta.className || null,
     timestamp: event.timestamp,
-    metadata: meta
+    metadata: safeMeta
   });
 }
 
@@ -440,7 +493,11 @@ async function findUserByFingerprint(fingerprintId) {
   const users = (await dbGet("users", {})) || {};
   return (
     Object.entries(users).find(
-      ([, user]) => normalizeFingerprint(user.fingerprintEnrollmentId || user.fingerprintId) === normalizedId
+      ([uid, user]) =>
+        normalizeFingerprint(user?.fingerprintEnrollmentId || user?.fingerprintId) === normalizedId ||
+        normalizeFingerprint(user?.studentId) === normalizedId ||
+        normalizeFingerprint(user?.rollNo) === normalizedId ||
+        normalizeFingerprint(uid) === normalizedId
     ) || [null, null]
   );
 }
@@ -690,10 +747,63 @@ async function buildAttendanceSummary(className) {
     dbGet("users", {})
   ]);
 
-  const students = Object.keys(studentsVal || {}).length
-    ? normalizeStudentsPayload(studentsVal, className)
+  const targetClass = normalizeClassToken(className);
+
+  // 1. Enrolled student users for this class
+  const enrolledStudents = Object.entries(usersVal || {})
+    .filter(([uid, u]) => u && typeof u === "object")
+    .filter(([uid, u]) => normalizeRole(u.role) === "student")
+    .filter(([uid]) => !uid.startsWith("student_test_") && !uid.startsWith("student_uid_"))
+    .filter(([, u]) => u.name && String(u.name).trim() !== "")
+    .filter(([, u]) => {
+      const uClass = normalizeClassToken(u.class || u.className);
+      return uClass === targetClass || (!uClass && targetClass === "SY");
+    })
+    .map(([uid, u], index) => {
+      const rollNo = String(u.rollNo || u.id || u.studentId || u.fingerprintEnrollmentId || `${className}-${String(index + 1).padStart(2, "0")}`);
+      const name = String(u.name || u.studentName || uid);
+      return {
+        uid,
+        rollNo,
+        name,
+        status: "Absent",
+        time: "-"
+      };
+    });
+
+  // 2. Recorded students from database
+  const recordedStudents = normalizeStudentsPayload(studentsVal, className)
+    .filter((s) => !String(s.rollNo).startsWith("STUDENT_TEST_") && !String(s.rollNo).startsWith("STUDENT_UID_"));
+
+  // 3. Merge: keep recorded status/time, ensure real enrolled students are listed
+  const studentMap = new Map();
+  for (const s of recordedStudents) {
+    const key = String(s.rollNo || "").toUpperCase();
+    const nameKey = String(s.name || "").toLowerCase();
+    studentMap.set(key, s);
+    if (nameKey) studentMap.set(nameKey, s);
+  }
+
+  const mergedList = [...recordedStudents];
+  for (const enrolled of enrolledStudents) {
+    const key = String(enrolled.rollNo || "").toUpperCase();
+    const nameKey = String(enrolled.name || "").toLowerCase();
+    const existing = studentMap.get(key) || (nameKey ? studentMap.get(nameKey) : null);
+    if (existing) {
+      if (enrolled.name && enrolled.name !== enrolled.uid) existing.name = enrolled.name;
+      if (enrolled.rollNo) existing.rollNo = enrolled.rollNo;
+    } else {
+      studentMap.set(key, enrolled);
+      if (nameKey) studentMap.set(nameKey, enrolled);
+      mergedList.unshift(enrolled);
+    }
+  }
+
+  const finalStudents = mergedList.length > 0
+    ? mergedList
     : studentsFromUsers(usersVal, className);
-  const computedSummary = buildSummaryFromStudents(students, summary || {});
+
+  const computedSummary = buildSummaryFromStudents(finalStudents, summary || {});
 
   return {
     summary: {
@@ -701,7 +811,7 @@ async function buildAttendanceSummary(className) {
       ...computedSummary,
       faculty: (summary || {}).faculty || computedSummary.faculty || "-"
     },
-    students
+    students: finalStudents
   };
 }
 
@@ -729,9 +839,9 @@ async function getEventsList() {
     .sort((a, b) => String(a.start_time || "").localeCompare(String(b.start_time || "")));
 }
 
-async function getUsersList() {
+async function getUsersList(viewerRole = null) {
   const users = (await dbGet("users", {})) || {};
-  return Object.entries(users).map(([uid, user]) => sanitizeUserProfile(uid, user));
+  return Object.entries(users).map(([uid, user]) => sanitizeUserProfile(uid, user, viewerRole));
 }
 
 async function getSyllabusList() {
@@ -864,7 +974,8 @@ async function getDashboardPayload(user) {
     events,
     alerts,
     monitor: status,
-    timetable: await dbGet("timetable", {}),
+    timetable: await getTodayTimetable(className),
+    allTimetables: await dbGet("timetable", {}),
     syllabus
   };
 }
@@ -912,7 +1023,8 @@ app.get("/api/fingerprint/:fingerprintId", async (req, res) => {
 
 app.post("/api/auth/session", async (req, res) => {
   try {
-    const expectedRole = normalizeRole(req.body?.expectedRole || req.body?.role || "");
+    const rawExpectedRole = req.body?.expectedRole || req.body?.role || "";
+    const expectedRole = rawExpectedRole ? normalizeRole(rawExpectedRole) : "";
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
     const decoded = await verifyFirebaseBearerToken(token);
@@ -1041,13 +1153,15 @@ app.post("/api/auth/signup", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { username, password } = req.body || {};
-    const expectedRole = normalizeRole(req.body?.expectedRole || req.body?.role || "");
+    const rawExpectedRole = req.body?.expectedRole || req.body?.role || "";
+    const expectedRole = rawExpectedRole ? normalizeRole(rawExpectedRole) : "";
     if (!username || !password) {
       return res.status(400).json({ error: "Username/email and password are required" });
     }
 
     const [uid, account] = await findUserByIdentifier(username);
     if (!uid || !account) {
+      await logActivity("failed_login", { name: username, role: "guest" }, { reason: "User not found" });
       return res.status(401).json({ error: "Invalid credentials" });
     }
     if (!isActiveUser(account)) {
@@ -1057,15 +1171,17 @@ app.post("/api/auth/login", async (req, res) => {
 
     const isValid = await bcrypt.compare(String(password), account.passwordHash || "");
     if (!isValid) {
+      await logActivity("failed_login", { uid, ...account }, { reason: "Password mismatch" });
       return res.status(401).json({ error: "Invalid credentials" });
     }
     if (expectedRole && normalizeRole(account.role) !== expectedRole) {
+      await logActivity("failed_login_role_mismatch", { uid, ...account }, { expectedRole });
       return res.status(403).json({ error: `This account is registered as ${normalizeRole(account.role).toUpperCase()}, not ${expectedRole.toUpperCase()}.` });
     }
 
     const token = issueSessionToken({ uid, ...account });
     await dbUpdate(`users/${uid}`, { lastLoginAt: new Date().toISOString() });
-    await logActivity("user_logged_in_fallback", { uid, ...account }, {});
+    await logActivity("login", { uid, ...account }, {});
 
     return res.json({
       token,
@@ -1079,6 +1195,15 @@ app.post("/api/auth/login", async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ error: "Login failed", details: err.message });
+  }
+});
+
+app.post("/api/auth/logout", authMiddleware, async (req, res) => {
+  try {
+    await logActivity("logout", req.user, {});
+    return res.json({ ok: true, message: "Logged out successfully" });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to logout", details: err.message });
   }
 });
 
@@ -1180,36 +1305,131 @@ app.get("/api/attendance/logs", authMiddleware, async (req, res) => {
 app.post("/api/manual-otp/verify", authMiddleware, requireRoles(["student"]), async (req, res) => {
   try {
     const { classroom = DEFAULT_CLASSROOM, otp } = req.body || {};
-    const otpData = (await dbGet(`manual_otp/${classroom}`, null)) || null;
+    const cleanClassroom = normalizeClass(classroom) || DEFAULT_CLASSROOM;
+    const otpData = (await dbGet(`manual_otp/${cleanClassroom}/${req.user.uid}`, null)) ||
+      (await dbGet(`manual_otp/${cleanClassroom}`, null)) ||
+      null;
     if (!otpData || otpData.status !== "active") {
       return res.status(400).json({ error: "No active OTP found" });
     }
 
-    if (String(otpData.code) !== String(otp || "")) {
-      return res.status(400).json({ error: "Invalid OTP" });
+    const attempts = Number(otpData.attempts || 0);
+    if (attempts >= OTP_MAX_ATTEMPTS) {
+      await logActivity("otp_verification_rate_limited", req.user, { classroom: cleanClassroom });
+      return res.status(429).json({ error: "Too many OTP attempts" });
     }
 
     if (otpData.expiresAt && new Date(otpData.expiresAt).getTime() < Date.now()) {
+      await logActivity("otp_verification_expired", req.user, { classroom: cleanClassroom });
       return res.status(400).json({ error: "OTP expired" });
     }
 
+    const otpMatches = otpData.otpHash
+      ? otpData.otpHash === hashOtp(otp)
+      : String(otpData.code) === String(otp || "");
+    if (!otpMatches) {
+      const nextAttempts = attempts + 1;
+      const otpPath = otpData.studentUid ? `manual_otp/${cleanClassroom}/${otpData.studentUid}` : `manual_otp/${cleanClassroom}`;
+      await dbUpdate(otpPath, { attempts: nextAttempts, lastFailedAt: new Date().toISOString() });
+      await logActivity("otp_verification_failed", req.user, { classroom: cleanClassroom, attempts: nextAttempts });
+      return res.status(400).json({ error: "Invalid OTP" });
+    }
+
     const userClass = req.user.className || "SY";
-    const studentKey = sanitizeForPath(req.user.uid, sanitizeForPath(req.user.email, "student"));
-    await dbUpdate(`attendance/${userClass}/students/${studentKey}`, {
-      rollNo: studentKey.toUpperCase(),
-      name: req.user.name,
-      status: "Present",
-      time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
-      attendanceMode: "manual_otp"
+    const now = new Date().toISOString();
+    const authorization = {
+      studentUid: req.user.uid,
+      studentName: req.user.name,
+      studentId: req.user.uid,
+      className: userClass,
+      classroom: cleanClassroom,
+      attendanceMode: "manual_otp",
+      status: "authorized",
+      createdAt: now,
+      expiresAt: new Date(Date.now() + COMMAND_TTL_MS).toISOString()
+    };
+    const authorizationId = await dbPush(`access_authorizations/${sanitizeForPath(cleanClassroom)}`, authorization);
+    const commandId = await dbPush(`device_commands/${sanitizeForPath(cleanClassroom)}`, {
+      command: "otp_access",
+      classroom: cleanClassroom,
+      createdBy: req.user.uid,
+      createdByRole: req.user.role,
+      issuedBy: req.user.name,
+      issuedByUid: req.user.uid,
+      role: req.user.role,
+      status: "pending",
+      timestamp: now,
+      createdAt: now,
+      expiresAt: authorization.expiresAt,
+      payload: {
+        authorizationId,
+        studentUid: req.user.uid,
+        className: userClass,
+        studentName: req.user.name,
+        rollNo: req.user.rollNo || req.user.id || req.user.uid
+      }
     });
 
-    const attendance = await buildAttendanceSummary(userClass);
-    await dbSet(`attendance/${userClass}/summary`, attendance.summary);
-    await dbUpdate(`manual_otp/${classroom}`, { status: "used", usedBy: req.user.uid, usedAt: new Date().toISOString() });
-    await logActivity("manual_otp_verified", req.user, { classroom, className: userClass });
-    return res.json({ message: "Manual attendance marked successfully" });
+    const otpPath = otpData.studentUid ? `manual_otp/${cleanClassroom}/${otpData.studentUid}` : `manual_otp/${cleanClassroom}`;
+    await dbUpdate(otpPath, { status: "used", usedBy: req.user.uid, usedAt: now, authorizationId, commandId });
+    await logActivity("manual_otp_verified", req.user, { classroom: cleanClassroom, className: userClass, authorizationId, commandId });
+    return res.json({
+      message: "OTP verified. Access authorization queued; attendance will be recorded only after ESP32 confirms physical crossing.",
+      authorizationId,
+      commandId
+    });
   } catch (err) {
     return res.status(500).json({ error: "Failed to verify OTP", details: err.message });
+  }
+});
+
+app.post("/api/manual-otp/request", authMiddleware, requireRoles(["student"]), async (req, res) => {
+  try {
+    const classroom = normalizeClass(req.body?.classroom) || DEFAULT_CLASSROOM;
+    const otp = generateOtpCode();
+    const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS).toISOString();
+    await dbSet(`manual_otp/${classroom}/${req.user.uid}`, {
+      otpHash: hashOtp(otp),
+      status: "active",
+      studentUid: req.user.uid,
+      studentName: req.user.name,
+      className: req.user.className || "",
+      classroom,
+      attempts: 0,
+      generatedBy: req.user.uid,
+      generatedAt: now,
+      expiresAt
+    });
+    await logActivity("otp_requested", req.user, { classroom, expiresAt });
+    return res.status(201).json({ message: "OTP generated for fingerprint fallback.", otp, expiresAt });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to request OTP", details: err.message });
+  }
+});
+
+app.get("/api/manual-otp/status", authMiddleware, requireRoles(["student"]), async (req, res) => {
+  try {
+    const classroom = normalizeClass(req.query.classroom) || DEFAULT_CLASSROOM;
+    const cleanClassroom = sanitizeForPath(classroom);
+    const otpData = (await dbGet(`manual_otp/${cleanClassroom}/${req.user.uid}`, null)) || null;
+    if (!otpData) {
+      return res.json({ ok: true, hasActiveOtp: false });
+    }
+    const isExpired = otpData.expiresAt && new Date(otpData.expiresAt).getTime() < Date.now();
+    const isUsed = otpData.status === "used";
+    const isActive = otpData.status === "active" && !isExpired;
+    return res.json({
+      ok: true,
+      hasActiveOtp: isActive,
+      status: isUsed ? "used" : (isExpired ? "expired" : otpData.status),
+      expiresAt: otpData.expiresAt,
+      generatedAt: otpData.generatedAt,
+      attempts: otpData.attempts || 0,
+      classroom: cleanClassroom
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to fetch OTP status", details: err.message });
   }
 });
 
@@ -1217,6 +1437,7 @@ app.post("/api/control/command", authMiddleware, async (req, res) => {
   try {
     const { command, classroom = DEFAULT_CLASSROOM, payload: commandPayload = {} } = req.body || {};
     const cleanClassroom = normalizeClass(classroom) || DEFAULT_CLASSROOM;
+    const payload = normalizeCommandPayload(commandPayload);
     if (!COMMANDS.includes(command)) {
       return res.status(400).json({ error: "Unsupported command" });
     }
@@ -1226,11 +1447,16 @@ app.post("/api/control/command", authMiddleware, async (req, res) => {
     if (!hasPermission(req.user, permission)) {
       return res.status(403).json({ error: "Access denied for this command" });
     }
+    if (["enroll_fingerprint", "delete_fingerprint"].includes(command) && !normalizeText(payload.studentId || payload.userUid || payload.uid)) {
+      return res.status(400).json({ error: "Fingerprint commands require a target student/user id" });
+    }
 
     const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + COMMAND_TTL_MS).toISOString();
     const commandId = await dbPush(`device_commands/${sanitizeForPath(cleanClassroom)}`, {
       command,
       classroom: cleanClassroom,
+      deviceId: sanitizeDeviceId(payload.deviceId || "esp32_01"),
       issuedBy: req.user.name,
       issuedByUid: req.user.uid || null,
       createdBy: req.user.uid || null,
@@ -1239,7 +1465,8 @@ app.post("/api/control/command", authMiddleware, async (req, res) => {
       status: "pending",
       timestamp: now,
       createdAt: now,
-      payload: commandPayload && typeof commandPayload === "object" ? commandPayload : {}
+      expiresAt,
+      payload
     });
 
     // Keep the old web-dashboard command location for backward compatibility.
@@ -1250,31 +1477,86 @@ app.post("/api/control/command", authMiddleware, async (req, res) => {
       role,
       status: "pending",
       timestamp: now,
-      commandId
+      commandId,
+      expiresAt
     };
     await dbSet(`commands/${command}`, legacyPayload);
 
     if (command === "generate_otp") {
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
-      await dbSet(`manual_otp/${cleanClassroom}`, {
-        code: otp,
+      const otp = generateOtpCode();
+      const studentUid = sanitizeForPath(payload.studentUid || payload.uid || "shared");
+      const otpPath = payload.studentUid || payload.uid
+        ? `manual_otp/${cleanClassroom}/${studentUid}`
+        : `manual_otp/${cleanClassroom}`;
+      await dbSet(otpPath, {
+        otpHash: hashOtp(otp),
         status: "active",
+        classroom: cleanClassroom,
+        studentUid: payload.studentUid || payload.uid || "",
+        studentName: normalizeText(payload.studentName),
+        className: normalizeText(payload.className),
+        attempts: 0,
         generatedBy: req.user.name,
         generatedAt: now,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+        expiresAt: new Date(Date.now() + OTP_TTL_MS).toISOString(),
+        commandId
       });
+      legacyPayload.otp = otp;
+    }
+
+    if (command === "delete_fingerprint") {
+      const targetUid = sanitizeForPath(payload.uid || payload.userUid);
+      const studentId = normalizeText(payload.studentId);
+      const users = (await dbGet("users", {})) || {};
+      let resolvedUid = targetUid && users[targetUid] ? targetUid : null;
+      if (!resolvedUid && studentId) {
+        const match = Object.entries(users).find(
+          ([u, user]) =>
+            normalizeText(user.studentId) === studentId ||
+            normalizeText(user.rollNo) === studentId ||
+            u === studentId
+        );
+        if (match) resolvedUid = match[0];
+      }
+      if (resolvedUid && users[resolvedUid]) {
+        const oldFpId = normalizeFingerprint(users[resolvedUid].fingerprintEnrollmentId || users[resolvedUid].fingerprintId);
+        await dbUpdate(`users/${resolvedUid}`, {
+          fingerprintEnrollmentId: "",
+          fingerprintId: "",
+          updatedAt: now
+        });
+        if (oldFpId) {
+          await dbRemove(`fingerprints/${oldFpId}`);
+        }
+        await logActivity("fingerprint_deleted", req.user, { uid: resolvedUid, studentId, oldFpId, target: resolvedUid });
+      }
     }
 
     const statusPatch = { updatedAt: now };
     if (command === "open_class") statusPatch.doorStatus = "Unlocked";
+    if (command === "start_lecture") statusPatch.lectureStatus = "In Progress";
     if (command === "end_lecture") statusPatch.lectureStatus = "Completed";
-    if (command === "short_break") statusPatch.lectureStatus = "Short Break";
-    if (command === "emergency") statusPatch.alerts = "Emergency alert triggered";
+    if (command === "short_break" || command === "start_short_break") statusPatch.lectureStatus = "Short Break";
+    if (command === "end_short_break") statusPatch.lectureStatus = "In Progress";
+    if (command === "emergency") {
+      statusPatch.alerts = "Emergency alert triggered";
+      statusPatch.emergencyActive = true;
+      statusPatch.mode = "MODE_EMERGENCY";
+    }
+    if (command === "reset_emergency") {
+      statusPatch.alerts = "No active alerts";
+      statusPatch.emergencyActive = false;
+      statusPatch.mode = "MODE_IDLE";
+    }
+    if (command === "admin_override") {
+      statusPatch.mode = "MODE_ADMIN_OVERRIDE";
+      statusPatch.doorStatus = "Admin Override";
+    }
     if (command === "start_seminar") statusPatch.lectureStatus = "Seminar";
     if (command === "half_day") statusPatch.lectureStatus = "Half Day";
     await dbUpdate(`classroom_status/${cleanClassroom}`, statusPatch);
 
-    await logActivity("command_issued", req.user, { command, classroom: cleanClassroom, commandId });
+    await logActivity("command_issued", req.user, { command, classroom: cleanClassroom, commandId, target: commandId });
     return res.json({ message: "Command queued", commandId, payload: legacyPayload });
   } catch (err) {
     return res.status(500).json({ error: "Failed to queue command", details: err.message });
@@ -1422,7 +1704,7 @@ app.get("/api/feedback/config", authMiddleware, async (_, res) => {
   }
 });
 
-app.post("/api/feedback/config", authMiddleware, requireRoles(["hod"]), async (req, res) => {
+app.post("/api/feedback/config", authMiddleware, requireRoles(["hod", "admin"]), async (req, res) => {
   try {
     const body = req.body || {};
     const config = {
@@ -1604,7 +1886,7 @@ app.post("/api/od/request", authMiddleware, requireRoles(["student"]), async (re
   }
 });
 
-app.post("/api/od/request/:requestId/decision", authMiddleware, requireRoles(["cc", "hod"]), async (req, res) => {
+app.post("/api/od/request/:requestId/decision", authMiddleware, requireRoles(["cc", "hod", "admin"]), async (req, res) => {
   try {
     const role = normalizeRole(req.user.role);
     const requestId = normalizeText(req.params.requestId);
@@ -1633,7 +1915,7 @@ app.post("/api/od/request/:requestId/decision", authMiddleware, requireRoles(["c
   }
 });
 
-app.get("/api/od/report", authMiddleware, requireRoles(["cc", "hod"]), async (req, res) => {
+app.get("/api/od/report", authMiddleware, requireRoles(["cc", "hod", "admin"]), async (req, res) => {
   try {
     const role = normalizeRole(req.user.role);
     const requestedClass = normalizeText(req.query.className);
@@ -1687,7 +1969,7 @@ app.post("/api/alerts", authMiddleware, requireRoles(["admin", "hod"]), async (r
 
 app.get("/api/users", authMiddleware, requireRoles(["admin", "hod"]), async (req, res) => {
   try {
-    let users = await getUsersList();
+    let users = await getUsersList(req.user.role);
     if (normalizeRole(req.user.role) === "hod") {
       const department = normalizeText(req.user.department);
       users = users.filter((user) =>
@@ -1746,11 +2028,14 @@ app.post("/api/users", authMiddleware, requirePermission("manage_users"), async 
       createdAt: new Date().toISOString(),
       createdBy: req.user.uid || null
     };
-    if (password) user.passwordHash = await bcrypt.hash(password, 10);
+    if (password) {
+      user.passwordHash = await bcrypt.hash(password, 10);
+      user.assignedPassword = password;
+    }
 
     await dbSet(`users/${uid}`, user);
     await logActivity("user_created", req.user, { uid, role, target: uid });
-    return res.status(201).json({ user: sanitizeUserProfile(uid, user) });
+    return res.status(201).json({ user: sanitizeUserProfile(uid, user, req.user.role) });
   } catch (err) {
     return res.status(500).json({ error: "Failed to create user", details: err.message });
   }
@@ -1777,6 +2062,7 @@ app.patch("/api/users/:uid", authMiddleware, requirePermission("manage_users"), 
       updatedBy: req.user.uid || null
     };
     if (req.body?.name !== undefined) patch.name = normalizeText(req.body.name);
+    if (req.body?.username !== undefined) patch.username = sanitizeForPath(req.body.username);
     if (req.body?.department !== undefined) patch.department = normalizeText(req.body.department);
     if (req.body?.className !== undefined || req.body?.class !== undefined) {
       patch.className = normalizeClass(req.body.className || req.body.class) || "";
@@ -1802,14 +2088,69 @@ app.patch("/api/users/:uid", authMiddleware, requirePermission("manage_users"), 
         return res.status(400).json({ error: "Password must be at least 8 characters and include alphabets, numbers, and special characters." });
       }
       patch.passwordHash = await bcrypt.hash(password, 10);
+      patch.assignedPassword = password;
     }
 
     await dbUpdate(`users/${targetUid}`, patch);
     const next = { ...current, ...patch };
     await logActivity("user_updated", req.user, { uid: targetUid, role: next.role, active: next.active, target: targetUid });
-    return res.json({ user: sanitizeUserProfile(targetUid, next) });
+    return res.json({ user: sanitizeUserProfile(targetUid, next, req.user.role) });
   } catch (err) {
     return res.status(500).json({ error: "Failed to update user", details: err.message });
+  }
+});
+
+app.delete("/api/users/:uid", authMiddleware, requirePermission("manage_users"), async (req, res) => {
+  try {
+    const targetUid = sanitizeForPath(req.params.uid);
+    if (!targetUid) return res.status(400).json({ error: "Missing user UID" });
+
+    if (targetUid === req.user.uid) {
+      return res.status(403).json({ error: "Cannot delete your own account" });
+    }
+
+    const current = (await dbGet(`users/${targetUid}`, null)) || null;
+    if (!current) return res.status(404).json({ error: "User not found" });
+
+    const actorRole = normalizeRole(req.user.role);
+    const targetRole = normalizeRole(current.role);
+
+    if (actorRole === "hod" && !["student", "faculty", "cc"].includes(targetRole)) {
+      return res.status(403).json({ error: "HOD can delete only student, faculty, or CC users" });
+    }
+
+    // 1. Remove from RTDB
+    await dbRemove(`users/${targetUid}`);
+
+    // 2. Clear fingerprint mapping if assigned
+    const fpId = normalizeFingerprint(current.fingerprintEnrollmentId || current.fingerprintId);
+    if (fpId) {
+      await dbRemove(`fingerprints/${fpId}`);
+    }
+
+    // 3. Remove attendance record if student
+    if (targetRole === "student") {
+      const userClass = normalizeClass(current.className || current.class);
+      if (userClass) {
+        await dbRemove(`attendance/${userClass}/students/${targetUid}`);
+      }
+    }
+
+    // 4. Delete from Firebase Auth if registered with email
+    const auth = getAuth();
+    if (auth && current.email) {
+      try {
+        const fbUser = await auth.getUserByEmail(current.email);
+        if (fbUser) await auth.deleteUser(fbUser.uid);
+      } catch (err) {
+        // Non-fatal if user is not in Firebase Auth
+      }
+    }
+
+    await logActivity("user_deleted", req.user, { uid: targetUid, name: current.name, role: current.role });
+    return res.json({ ok: true, message: `User '${current.name || targetUid}' deleted successfully`, uid: targetUid });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to delete user", details: err.message });
   }
 });
 
@@ -2039,9 +2380,21 @@ app.get("/api/esp/commands", async (req, res) => {
     const classroom = normalizeClass(req.query.classroom) || DEFAULT_CLASSROOM;
     const limit = Math.max(1, Math.min(Number(req.query.limit) || 10, 50));
     const commandRoot = (await dbGet(`device_commands/${sanitizeForPath(classroom)}`, {})) || {};
+    const nowMs = Date.now();
+    const expired = Object.entries(commandRoot)
+      .map(([commandId, value]) => ({ commandId, ...(value || {}) }))
+      .filter((item) => item.classroom === classroom && ["pending", "queued"].includes(item.status))
+      .filter((item) => item.expiresAt && new Date(item.expiresAt).getTime() < nowMs);
+    await Promise.all(expired.map((item) =>
+      dbUpdate(`device_commands/${sanitizeForPath(classroom)}/${sanitizeForPath(item.commandId)}`, {
+        status: "expired",
+        expiredAt: new Date().toISOString()
+      })
+    ));
     const commands = Object.entries(commandRoot)
       .map(([commandId, value]) => ({ commandId, ...(value || {}) }))
       .filter((item) => item.classroom === classroom && ["pending", "queued"].includes(item.status))
+      .filter((item) => !item.expiresAt || new Date(item.expiresAt).getTime() >= nowMs)
       .sort((a, b) => String(a.createdAt || a.timestamp || "").localeCompare(String(b.createdAt || b.timestamp || "")))
       .slice(0, limit);
     return res.json({ ok: true, classroom, commands });
@@ -2073,6 +2426,14 @@ app.post("/api/esp/command-ack", async (req, res) => {
     if (existing.command && (status === "executed" || status === "failed")) {
       await dbUpdate(`commands/${existing.command}`, { status, acknowledgedAt: now, deviceId: patch.deviceId, message: patch.message });
     }
+    await logActivity("esp_command_ack", { uid: patch.deviceId, name: patch.deviceId, role: "esp32" }, {
+      commandId,
+      command: existing.command,
+      classroom: cleanClassroom,
+      status,
+      deviceId: patch.deviceId,
+      message: patch.message
+    });
     return res.json({ ok: true, commandId, status });
   } catch (err) {
     return res.status(500).json({ error: "Failed to acknowledge command", details: err.message });
@@ -2211,7 +2572,11 @@ app.post("/api/esp/attendance", async (req, res) => {
     if (role !== "student") return res.status(400).json({ error: "Only student fingerprints can create attendance" });
 
     const userClass = normalizeClass(user.className || user.class) || classroom;
-    if (normalizeClassToken(userClass) !== normalizeClassToken(classroom)) {
+    const isClassMatch =
+      normalizeClassToken(userClass) === normalizeClassToken(classroom) ||
+      classroom === DEFAULT_CLASSROOM ||
+      ["SY", "TY", "BE"].includes(normalizeClassToken(userClass));
+    if (!isClassMatch) {
       return res.status(403).json({ error: "Student is not assigned to this classroom" });
     }
 
@@ -2253,9 +2618,142 @@ app.post("/api/esp/attendance", async (req, res) => {
     const attendance = await buildAttendanceSummary(userClass);
     await dbSet(`attendance/${userClass}/summary`, attendance.summary);
 
+    if (attendanceMode === "manual_otp" || body.authorizationId) {
+      const authId = sanitizeForPath(body.authorizationId);
+      if (authId) {
+        await dbUpdate(`access_authorizations/${sanitizeForPath(classroom)}/${authId}`, {
+          status: "completed",
+          crossingConfirmed: true,
+          completedAt: new Date().toISOString()
+        });
+      }
+    }
+
     return res.status(201).json({ ok: true, eventId, uid, student: { name: record.name, rollNo: record.rollNo }, attendance: record });
   } catch (err) {
     return res.status(500).json({ error: "Failed to record ESP attendance", details: err.message });
+  }
+});
+
+app.post("/api/esp/access-event", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const body = req.body || {};
+    const classroom = normalizeClass(body.classroom) || DEFAULT_CLASSROOM;
+    const eventType = normalizeText(body.eventType || "access_event");
+    const eventId = sanitizeDeviceId(body.eventId || `access_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
+    const referenceId = normalizeText(body.referenceId);
+    const notes = normalizeText(body.notes);
+    const occupancy = Math.max(0, Math.min(Number(body.occupancy || 0), 10000));
+    const timestamp = normalizeText(body.timestamp) || new Date().toISOString();
+    const deviceId = sanitizeDeviceId(body.deviceId || "esp32_01");
+
+    const eventRecord = {
+      eventId,
+      classroom,
+      eventType,
+      referenceId,
+      notes,
+      occupancy,
+      timestamp,
+      deviceId
+    };
+
+    await dbSet(`access_events/${eventId}`, eventRecord);
+    await dbUpdate(`classroom_status/${classroom}`, {
+      occupancy,
+      updatedAt: new Date().toISOString()
+    });
+
+    await logActivity("esp_access_event", { uid: deviceId, name: deviceId, role: "esp32" }, {
+      eventId,
+      classroom,
+      eventType,
+      referenceId,
+      notes,
+      occupancy
+    });
+
+    return res.status(201).json({ ok: true, eventId, eventRecord });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to record access event", details: err.message });
+  }
+});
+
+app.post("/api/esp/enroll-result", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const body = req.body || {};
+    const { commandId, studentId, uid: targetUid, fingerprintId, status, deviceId } = body;
+    const cleanFingerprintId = normalizeFingerprint(fingerprintId);
+    const cleanStatus = normalizeText(status).toLowerCase();
+    const now = new Date().toISOString();
+
+    if (!cleanFingerprintId) {
+      return res.status(400).json({ error: "fingerprintId is required" });
+    }
+
+    const users = (await dbGet("users", {})) || {};
+    let resolvedUid = targetUid && users[targetUid] ? targetUid : null;
+    if (!resolvedUid && studentId) {
+      const match = Object.entries(users).find(
+        ([u, user]) =>
+          normalizeText(user.studentId) === normalizeText(studentId) ||
+          normalizeText(user.rollNo) === normalizeText(studentId) ||
+          u === studentId
+      );
+      if (match) resolvedUid = match[0];
+    }
+
+    if (!resolvedUid) {
+      return res.status(404).json({ error: "Target student user not found" });
+    }
+
+    if (cleanStatus === "success" || cleanStatus === "executed") {
+      await dbUpdate(`users/${resolvedUid}`, {
+        fingerprintEnrollmentId: cleanFingerprintId,
+        fingerprintId: cleanFingerprintId,
+        fingerprintUpdatedAt: now,
+        updatedAt: now
+      });
+
+      await dbSet(`fingerprints/${cleanFingerprintId}`, {
+        uid: resolvedUid,
+        studentId: users[resolvedUid]?.studentId || resolvedUid,
+        deviceId: sanitizeDeviceId(deviceId || "esp32_01"),
+        enrolledAt: now
+      });
+
+      if (commandId) {
+        const cleanClassroom = normalizeClass(body.classroom) || DEFAULT_CLASSROOM;
+        await dbUpdate(`device_commands/${sanitizeForPath(cleanClassroom)}/${sanitizeForPath(commandId)}`, {
+          status: "executed",
+          fingerprintId: cleanFingerprintId,
+          acknowledgedAt: now,
+          message: `Fingerprint enrolled successfully in slot ${cleanFingerprintId}`
+        });
+      }
+
+      await logActivity("fingerprint_enrolled", { uid: resolvedUid, name: users[resolvedUid]?.name || "Student", role: "student" }, {
+        fingerprintId: cleanFingerprintId,
+        deviceId: sanitizeDeviceId(deviceId),
+        commandId
+      });
+
+      return res.json({ ok: true, uid: resolvedUid, fingerprintId: cleanFingerprintId, status: "enrolled" });
+    } else {
+      if (commandId) {
+        const cleanClassroom = normalizeClass(body.classroom) || DEFAULT_CLASSROOM;
+        await dbUpdate(`device_commands/${sanitizeForPath(cleanClassroom)}/${sanitizeForPath(commandId)}`, {
+          status: "failed",
+          acknowledgedAt: now,
+          message: body.message || "Fingerprint enrollment failed at sensor"
+        });
+      }
+      return res.status(400).json({ error: "Enrollment unsuccessful", details: body.message });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to process enrollment result", details: err.message });
   }
 });
 
@@ -2448,4 +2946,8 @@ function startServer(preferredPort) {
   });
 }
 
-startServer(PORT);
+if (require.main === module) {
+  startServer(PORT);
+}
+
+module.exports = { app, startServer };

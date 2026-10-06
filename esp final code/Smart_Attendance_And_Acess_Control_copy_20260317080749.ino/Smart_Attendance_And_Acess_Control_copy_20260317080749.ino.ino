@@ -1,65 +1,135 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <ESP32Servo.h>
+#include <Adafruit_Fingerprint.h>
+#include <SPI.h>
+#include <FS.h>
+#include <SD.h>
 
-// LCD setup (change 0x27 to 0x3F if needed)
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+#include "Config.h"
+#include "SystemState.h"
+#include "LCDManager.h"
+#include "BuzzerManager.h"
+#include "OfflineQueueManager.h"
+#include "AccessManager.h"
+#include "AttendanceManager.h"
+#include "BeamManager.h"
+#include "FingerprintManager.h"
+#include "WifiApiManager.h"
 
-int turbidityPin = A0;
-int sensorValue = 0;
+// ==============================================================================
+// SMART CLASSROOM ATTENDANCE & ACCESS CONTROL SYSTEM (SAAC)
+// PRODUCTION ESP32 FIRMWARE - INTEGRATED MODULAR ARCHITECTURE
+// STRICT HARDWARE PIN MAP PRESERVED - ZERO PHYSICAL BUTTON DEPENDENCIES
+// ==============================================================================
 
-// Calibration values (adjust after testing)
-int cleanValue = 900;   // value in clean water
-int dirtyValue = 300;   // value in dirty water
+// Hardware Serial and Fingerprint Module Handle
+HardwareSerial fingerSerial(2);
+Adafruit_Fingerprint finger = Adafruit_Fingerprint(&fingerSerial);
 
+// Shared Runtime System State
+SystemState systemState;
+
+// Modular System Managers (Single Active Implementations)
+LCDManager lcdManager;
+BuzzerManager buzzerManager(BUZZER_PIN);
+OfflineQueueManager offlineQueue;
+AccessManager accessManager(systemState, lcdManager, buzzerManager);
+AttendanceManager attendanceManager(systemState, offlineQueue, lcdManager);
+BeamManager beamManager(systemState, accessManager, attendanceManager, lcdManager, buzzerManager);
+FingerprintManager fingerprintManager(&finger, systemState, accessManager, beamManager, offlineQueue, lcdManager, buzzerManager);
+WifiApiManager wifiApiManager(systemState, accessManager, beamManager, offlineQueue, lcdManager, buzzerManager);
+
+// Timing tracker for periodic offline queue sync
+unsigned long lastOfflineSync = 0;
+
+// ------------------------------------------------------------------------------
+// HARDWARE INITIALIZATION
+// ------------------------------------------------------------------------------
 void setup() {
-  lcd.init();
-  lcd.backlight();
+  Serial.begin(115200);
+  delay(100);
+  Serial.println("\n==================================================");
+  Serial.println("[BOOT] Initializing SAAC Edge Node (Firmware v2.3.0-production)");
+  Serial.println("==================================================");
 
-  Serial.begin(9600);  // for calibration/debug
+  // 1. Audio Signaling Initialization (Buzzer: GPIO 5)
+  buzzerManager.begin();
 
-  lcd.setCursor(0,0);
-  lcd.print("Turbidity System");
-  delay(2000);
-  lcd.clear();
+  // 2. 16x2 I2C LCD Display Initialization (SDA: GPIO 21, SCL: GPIO 22, Addr: 0x27)
+  lcdManager.begin();
+
+  // 3. MG996R Barrier Servo (Signal: GPIO 18, 5V External PSU, Common GND)
+  accessManager.begin();
+
+  // 4. Optical Dual-Beam Sensors (Entry: GPIO 32, Exit: GPIO 33)
+  // NOTE: Lasers are powered directly from 5V/GND. No ESP32 GPIO laser control.
+  beamManager.begin();
+
+  // 5. MicroSD Card (Dedicated SPI: SCK=14, MISO=19, MOSI=23, CS=13 at 1 MHz)
+  if (offlineQueue.begin()) {
+    systemState.sdReady = true;
+  } else {
+    systemState.sdReady = false;
+    lcdManager.showMessage("SD CARD ERROR   ", "OFFLINE DISABLED", 2000);
+  }
+
+  // 6. R307 Optical Fingerprint Sensor (Hardware Serial 2: RX=16, TX=17 at 57600 baud)
+  fingerSerial.begin(FINGERPRINT_BAUD, SERIAL_8N1, FINGERPRINT_RX_PIN, FINGERPRINT_TX_PIN);
+  finger.begin(FINGERPRINT_BAUD);
+  if (fingerprintManager.begin()) {
+    systemState.fingerprintReady = true;
+  } else {
+    systemState.fingerprintReady = false;
+    lcdManager.showMessage("FP SENSOR ERROR ", "CHECK HARDWARE  ", 2000);
+  }
+
+  // 7. Non-blocking Wi-Fi and Cloud API Manager Initialization
+  wifiApiManager.setFingerprintManager(&fingerprintManager);
+  wifiApiManager.begin();
+
+  // Startup audio chime & transition to IDLE ready state
+  buzzerManager.startPattern(2, 80, 80);
+  accessManager.enterMode(MODE_IDLE, "Startup initialization complete");
 }
 
+// ------------------------------------------------------------------------------
+// MAIN NON-BLOCKING EXECUTION LOOP (Section 29)
+// ------------------------------------------------------------------------------
 void loop() {
+  unsigned long now = millis();
 
-  sensorValue = analogRead(turbidityPin);
-  Serial.println(sensorValue); // for testing
+  // 1. Process backend commands (GET /api/esp/commands & ACK)
+  wifiApiManager.updateCommands(now);
 
-  // 🛑 Detect air (no water condition)
-  if(sensorValue > 950) {
-    lcd.setCursor(0,0);
-    lcd.print("No Water Detected");
-    lcd.setCursor(0,1);
-    lcd.print("Insert Sensor    ");
-  }
-  else {
+  // 2. Update Wi-Fi state & non-blocking auto-reconnect
+  wifiApiManager.updateWifi(now);
 
-    // Convert to percentage
-    int percentage = map(sensorValue, dirtyValue, cleanValue, 0, 100);
-    percentage = constrain(percentage, 0, 100);
+  // 3. Update fingerprint state machine (scanning, verification, & enrollment)
+  fingerprintManager.update(now);
 
-    // Display percentage
-    lcd.setCursor(0,0);
-    lcd.print("Quality: ");
-    lcd.print(percentage);
-    lcd.print("%   ");
+  // 4. Update beam / crossing state machine (unauthorized rejection & transit confirmation)
+  beamManager.update(now);
 
-    // Water condition
-    lcd.setCursor(0,1);
+  // 5. Update physical barrier servo (auto-close after hold time)
+  accessManager.update(now);
 
-    if(percentage > 75) {
-      lcd.print("Clean Water     ");
-    }
-    else if(percentage > 40) {
-      lcd.print("Cloudy Water    ");
-    }
-    else {
-      lcd.print("Dirty Water     ");
-    }
+  // 6. Update buzzer audio state machine (non-blocking tone generation)
+  buzzerManager.update(now);
+
+  // 7. Process offline queue synchronization when Wi-Fi is active
+  if (systemState.wifiConnected && (now - lastOfflineSync >= OFFLINE_SYNC_INTERVAL_MS)) {
+    lastOfflineSync = now;
+    attendanceManager.syncOfflineQueue();
   }
 
-  delay(1000);
+  // 8. Send periodic device telemetry heartbeat (POST /api/esp/status)
+  wifiApiManager.updateTelemetry(now);
+
+  // 9. Update LCD display overlay hold timers
+  lcdManager.update(now);
 }

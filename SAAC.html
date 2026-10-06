@@ -502,7 +502,7 @@
         </ul>
         <div class="tab-content">
           <div class="tab-pane fade show active" id="loginPane">
-            <h3 class="h4 mb-3">Role Login</h3>
+            <h3 class="h4 mb-3">Sign In</h3>
             <div class="row g-3">
               <div class="col-12"><label class="form-label" for="loginEmail">Email or Username</label><input id="loginEmail" class="form-control" type="text" placeholder="Enter email or username"></div>
               <div class="col-12">
@@ -514,17 +514,6 @@
               </div>
               <div class="col-12 text-end">
                 <button id="forgotPasswordBtn" class="auth-link-btn" type="button" aria-label="Reset password">Forgot Password?</button>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label" for="loginRole">Expected Role</label>
-                <select id="loginRole" class="form-select">
-                  <option value="student">Student</option>
-                  <option value="faculty">Faculty</option>
-                  <option value="admin">Admin</option>
-                  <option value="cc">CC</option>
-                  <option value="hod">HOD</option>
-                </select>
-                <div class="small-note mt-2">Use CC role for class coordinator login and class-level coordination.</div>
               </div>
               <div class="col-12"><button id="loginBtn" class="btn btn-dark w-100">Sign In</button></div>
             </div>
@@ -962,10 +951,11 @@
           </div>
           <div class="col-lg-8">
             <div class="panel-card mb-3" id="userMgmtPanel">
-              <h3 class="h5 mb-3">User Management</h3>
+              <h3 class="h5 mb-3">User Management &amp; Accounts</h3>
               <div class="row g-2 mb-3">
-                <div class="col-md-6"><input id="userName" class="form-control" placeholder="Full name"></div>
-                <div class="col-md-6"><input id="userEmail" class="form-control" type="email" placeholder="Email"></div>
+                <div class="col-md-4"><input id="userUsername" class="form-control" placeholder="Login ID / Username"></div>
+                <div class="col-md-4"><input id="userName" class="form-control" placeholder="Full name"></div>
+                <div class="col-md-4"><input id="userEmail" class="form-control" type="email" placeholder="Email"></div>
                 <div class="col-md-4"><input id="userPassword" class="form-control" type="password" placeholder="Initial password"></div>
                 <div class="col-md-4">
                   <select id="userRole" class="form-select">
@@ -984,9 +974,78 @@
               <div id="userMessage" class="small-note mb-3"></div>
               <div class="table-responsive">
                 <table class="table align-middle">
-                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Class</th><th>Fingerprint ID</th><th>Status</th><th>Action</th></tr></thead>
+                  <thead><tr><th>Login ID</th><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Class</th><th>Fingerprint ID</th><th>Password</th><th>Status</th><th>Action</th></tr></thead>
                   <tbody id="usersBody"></tbody>
                 </table>
+              </div>
+            </div>
+
+            <!-- Edit User Account Modal -->
+            <div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true" style="display:none; background: rgba(16, 34, 53, 0.48); backdrop-filter: blur(4px); z-index: 1060;">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content" style="border-radius: 20px; border: 1px solid var(--line); box-shadow: 0 20px 45px rgba(0,0,0,0.22); background: var(--panel);">
+                  <div class="modal-header border-bottom">
+                    <h5 class="modal-title fw-bold" id="editUserModalTitle">Edit User Account</h5>
+                    <button type="button" class="btn-close" id="closeEditUserModalBtn" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <input type="hidden" id="editUserUid">
+                    <div class="mb-2">
+                      <label class="form-label small fw-semibold" for="editUserUsername">Login ID / Username</label>
+                      <input id="editUserUsername" class="form-control" placeholder="Username / Login ID">
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label small fw-semibold" for="editUserName">Full Name</label>
+                      <input id="editUserName" class="form-control" placeholder="Full name">
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label small fw-semibold" for="editUserEmail">Email Address</label>
+                      <input id="editUserEmail" class="form-control" type="email" placeholder="Email address">
+                    </div>
+                    <div class="row g-2 mb-2">
+                      <div class="col-6">
+                        <label class="form-label small fw-semibold" for="editUserRole">Role</label>
+                        <select id="editUserRole" class="form-select">
+                          <option value="student">Student</option>
+                          <option value="faculty">Faculty</option>
+                          <option value="cc">CC</option>
+                          <option value="hod">HOD</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
+                      <div class="col-6">
+                        <label class="form-label small fw-semibold" for="editUserDepartment">Department</label>
+                        <input id="editUserDepartment" class="form-control" placeholder="Department">
+                      </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                      <div class="col-6">
+                        <label class="form-label small fw-semibold" for="editUserClass">Class</label>
+                        <input id="editUserClass" class="form-control" placeholder="Class / Classroom">
+                      </div>
+                      <div class="col-6">
+                        <label class="form-label small fw-semibold" for="editUserFingerprint">Fingerprint ID</label>
+                        <input id="editUserFingerprint" class="form-control" placeholder="Fingerprint Slot ID">
+                      </div>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label small fw-semibold" for="editUserPassword">Account Password</label>
+                      <div class="password-wrap">
+                        <input id="editUserPassword" class="form-control" type="password" placeholder="Password">
+                        <button class="password-toggle" type="button" data-password-toggle="editUserPassword" aria-label="Show password">Show</button>
+                      </div>
+                      <div class="form-text small">At least 8 characters with letters, numbers, and symbols.</div>
+                    </div>
+                    <div id="editUserMessage" class="small-note mt-2"></div>
+                  </div>
+                  <div class="modal-footer border-top d-flex justify-content-between">
+                    <button type="button" class="btn btn-outline-danger" id="deleteUserFromModalBtn">Delete User</button>
+                    <div>
+                      <button type="button" class="btn btn-outline-secondary" id="cancelEditUserModalBtn">Cancel</button>
+                      <button type="button" class="btn btn-primary" id="saveEditUserBtn">Save Account Changes</button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="panel-card mb-3" id="feedbackControlPanel">
@@ -1077,13 +1136,17 @@
     };
 
     const COMMAND_BUTTONS = [
-      ["open_class", "Open Class"],
-      ["end_lecture", "End Lecture"],
-      ["short_break", "Short Break"],
-      ["emergency", "Emergency Alert"],
-      ["generate_otp", "Generate OTP"],
-      ["start_seminar", "Start Seminar"],
-      ["half_day", "Half Day"]
+      ["admin_override", "Admin Override", ["admin"], "btn-outline-danger"],
+      ["emergency", "Emergency Alert", ["admin", "hod"], "btn-danger"],
+      ["reset_emergency", "Reset Emergency", ["admin", "hod"], "btn-warning"],
+      ["start_lecture", "Start Lecture", ["faculty", "hod", "admin"], "btn-success"],
+      ["end_lecture", "End Lecture", ["faculty", "hod", "admin"], "btn-outline-primary"],
+      ["start_short_break", "Start Short Break", ["faculty", "hod", "admin"], "btn-outline-warning"],
+      ["end_short_break", "End Short Break", ["faculty", "hod", "admin"], "btn-outline-info"],
+      ["generate_otp", "Generate Student OTP", ["faculty", "hod", "admin"], "btn-outline-secondary"],
+      ["open_class", "Open Classroom", ["faculty", "hod", "admin"], "btn-outline-dark"],
+      ["start_seminar", "Start Seminar", ["hod", "admin"], "btn-outline-secondary"],
+      ["half_day", "Half Day Notice", ["hod", "admin"], "btn-outline-secondary"]
     ];
 
     const ROLE_VIEW_CONFIG = {
@@ -1117,7 +1180,8 @@
         "syllabusBtn", "syllabusMessage", "syllabusList", "otpPanel", "syllabusPanel", "feedbackStudentPanel", "feedbackToggleBtn", "feedbackStudentStatus",
         "feedbackStudentForm", "feedbackPrompt", "feedbackSuggestions", "feedbackSubjectCount", "feedbackSubjectForms", "feedbackSubmitBtn", "feedbackStudentMessage",
         "userMgmtPanel", "feedbackControlPanel", "feedbackEnabled", "feedbackFormTitle", "feedbackFormPrompt", "feedbackSuggestionsInput", "feedbackConfigBtn", "feedbackControlMessage",
-        "facultySyllabusPanel", "facultySyllabusBody", "dailySyllabusPanel", "dailySyllabusBody", "feedbackReviewPanel", "feedbackReviewBody", "feedbackReviewNote", "activityLogPanel", "usersBody", "userName", "userEmail", "userPassword", "userRole", "userDepartment", "userClass", "userFingerprint", "createUserBtn", "userMessage", "activityBody", "logoutBtn",
+        "facultySyllabusPanel", "facultySyllabusBody", "dailySyllabusPanel", "dailySyllabusBody", "feedbackReviewPanel", "feedbackReviewBody", "feedbackReviewNote", "activityLogPanel", "usersBody", "userUsername", "userName", "userEmail", "userPassword", "userRole", "userDepartment", "userClass", "userFingerprint", "createUserBtn", "userMessage", "activityBody", "logoutBtn",
+        "editUserModal", "editUserModalTitle", "closeEditUserModalBtn", "cancelEditUserModalBtn", "saveEditUserBtn", "deleteUserFromModalBtn", "editUserUid", "editUserUsername", "editUserName", "editUserEmail", "editUserRole", "editUserDepartment", "editUserClass", "editUserFingerprint", "editUserPassword", "editUserMessage",
         "riskPredictionBoard", "reliabilityBoard", "syllabusKpiGrid", "dailySyllabusFeed", "syllabusTimelineChart"
       ].forEach((id) => {
         els[id] = document.getElementById(id);
@@ -1196,19 +1260,37 @@
 
     function getSemesterSubjects(className) {
       const normalizedClass = String(className || "").trim().toUpperCase();
-      const syllabusSubjects = (state.analytics?.syllabus || [])
+      const syllabusList = Array.isArray(state.analytics?.syllabus) ? state.analytics.syllabus : [];
+      const syllabusSubjects = syllabusList
         .filter((item) => String(item.semester || "").trim().toUpperCase() === normalizedClass)
         .map((item) => ({
           subject: item.subject,
           faculty: item.faculty || "-"
         }));
 
+      let dashTimetableRows = [];
+      const rawTt = state.dashboard?.timetable;
+      if (Array.isArray(rawTt)) {
+        dashTimetableRows = rawTt.filter((row) => normalizedClass === String(state.user?.className || state.user?.class || "").trim().toUpperCase());
+      } else if (rawTt && typeof rawTt === "object") {
+        const classTt = rawTt[normalizedClass] || rawTt[className] || {};
+        if (Array.isArray(classTt)) {
+          dashTimetableRows = classTt;
+        } else if (typeof classTt === "object") {
+          dashTimetableRows = Object.values(classTt).flatMap((v) => Array.isArray(v) ? v : []);
+        }
+      }
+
+      const planSchedule = state.timetablePlanMeta?.className === className && Array.isArray(state.timetablePlanMeta?.schedule)
+        ? state.timetablePlanMeta.schedule
+        : [];
+
       const timetableRows = [
-        ...(state.timetablePlanMeta?.className === className ? (state.timetablePlanMeta?.schedule || []) : []),
-        ...((state.dashboard?.timetable || []).filter((row) => normalizedClass === String(state.user?.className || state.user?.class || "").trim().toUpperCase()))
+        ...planSchedule,
+        ...dashTimetableRows
       ];
       const timetableSubjects = timetableRows
-        .filter((row) => !/(lunch break|break|seminar review)/i.test(String(row.subject || "")))
+        .filter((row) => row && !/(lunch break|break|seminar review)/i.test(String(row.subject || "")))
         .map((row) => ({
           subject: row.subject,
           faculty: row.faculty || "-"
@@ -1475,20 +1557,37 @@
       renderPinnedDashboardCommands();
     }
 
+    function getRoleAllowedCommands(role = state.user?.role) {
+      const userRole = role || "student";
+      return COMMAND_BUTTONS.filter(([, , roles]) => roles.includes(userRole));
+    }
+
     function renderPinnedDashboardCommands() {
       if (!els.dashboardPinnedCommands) return;
-      const commands = COMMAND_BUTTONS.filter(([command]) => state.pinnedCommands.includes(command));
-      const disabled = !["faculty", "admin", "hod"].includes(state.user?.role);
+      const userRole = state.user?.role || "student";
+      const allowed = getRoleAllowedCommands(userRole);
+      const commands = allowed.filter(([command]) => state.pinnedCommands.includes(command));
 
       els.dashboardPinnedCommands.innerHTML = commands.length ? commands.map(([command, label]) => `
         <div class="command-card">
           <button type="button" class="pin-toggle active" data-pin-command="${command}">Pinned</button>
-          <button class="command-btn ${disabled ? "opacity-50" : ""}" data-command="${command}" ${disabled ? "disabled" : ""}>
+          <button class="command-btn" data-command="${command}">
             <div class="fw-semibold">${label}</div>
             <div class="small-note">${command}</div>
           </button>
         </div>
-      `).join("") : '<div class="small-note">No quick access pinned yet. Open the control panel and pin the commands you want on the dashboard.</div>';
+      `).join("") : `<div class="small-note">${allowed.length ? "No quick access pinned yet. Pin commands from the Quick Commands panel." : "No hardware control buttons authorized for your role."}</div>`;
+
+      els.dashboardPinnedCommands.querySelectorAll("[data-command]").forEach((button) => {
+        button.addEventListener("click", () => sendCommand(button.dataset.command));
+      });
+      els.dashboardPinnedCommands.querySelectorAll("[data-pin-command]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          togglePinnedCommand(button.dataset.pinCommand);
+        });
+      });
     }
 
     function applyRoleAccess() {
@@ -1670,31 +1769,35 @@
     async function handleLogin() {
       const identifier = els.loginEmail.value.trim();
       const password = els.loginPassword.value;
-      const expectedRole = els.loginRole.value;
       if (!identifier || !password) {
         setMessage(els.loginMessage, "Enter email/username and password.", "error");
         return;
       }
 
       try {
+        let session = null;
         if (state.firebaseEnabled && state.firebaseAuth && identifier.includes("@")) {
-          const credential = await state.firebaseAuth.signInWithEmailAndPassword(identifier, password);
-          const idToken = await credential.user.getIdToken();
-          const session = await api("/api/auth/session", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${idToken}` },
-            body: JSON.stringify({ expectedRole })
-          });
-          state.token = session.token;
-          state.user = session.user;
+          try {
+            const credential = await state.firebaseAuth.signInWithEmailAndPassword(identifier, password);
+            const idToken = await credential.user.getIdToken();
+            session = await api("/api/auth/session", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${idToken}` }
+            });
+          } catch (fbError) {
+            session = await api("/api/auth/login", {
+              method: "POST",
+              body: JSON.stringify({ username: identifier, password })
+            });
+          }
         } else {
-          const session = await api("/api/auth/login", {
+          session = await api("/api/auth/login", {
             method: "POST",
-            body: JSON.stringify({ username: identifier, password, expectedRole })
+            body: JSON.stringify({ username: identifier, password })
           });
-          state.token = session.token;
-          state.user = session.user;
         }
+        state.token = session.token;
+        state.user = session.user;
 
         els.authShell.style.display = "none";
         els.appShell.style.display = "block";
@@ -2045,6 +2148,26 @@
             <div class="col-12">
               <div class="panel-card">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                  <div>
+                    <h4 class="h6 mb-0">Fingerprint Fallback / OTP Access</h4>
+                    <div class="small-note">If fingerprint scan failed at the door, request a 10-minute fallback OTP or enter it to unlock the barrier.</div>
+                  </div>
+                  <button type="button" class="btn btn-outline-primary btn-sm" id="studentOtpRequestBtn">Request Fallback OTP</button>
+                </div>
+                <div class="row g-2 align-items-center mt-1">
+                  <div class="col-md-8">
+                    <input type="text" id="studentOtpInput" class="form-control" placeholder="Enter 6-digit OTP" maxlength="6">
+                  </div>
+                  <div class="col-md-4">
+                    <button type="button" class="btn btn-dark w-100" id="studentOtpSubmitBtn">Authorize Entry with OTP</button>
+                  </div>
+                </div>
+                <div id="studentOtpLiveFeedback" class="small-note mt-2">Attendance is recorded ONLY when you physically cross the classroom barrier optical sensor.</div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="panel-card">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
                   <h4 class="h6 mb-0">OD Request</h4>
                   <button type="button" class="btn btn-outline-dark btn-sm icon-btn" id="odRequestBtn"><span aria-hidden="true">&#128204;</span><span>Request OD</span></button>
                 </div>
@@ -2082,6 +2205,46 @@
             applyRoleAccess();
             if (els.feedbackStudentForm) els.feedbackStudentForm.style.display = "";
             if (els.feedbackToggleBtn) els.feedbackToggleBtn.textContent = "Close Form";
+          });
+        }
+        const studentOtpRequestBtn = document.getElementById("studentOtpRequestBtn");
+        const studentOtpSubmitBtn = document.getElementById("studentOtpSubmitBtn");
+        const studentOtpInput = document.getElementById("studentOtpInput");
+        const studentOtpLiveFeedback = document.getElementById("studentOtpLiveFeedback");
+
+        if (studentOtpRequestBtn) {
+          studentOtpRequestBtn.addEventListener("click", async () => {
+            try {
+              studentOtpLiveFeedback.innerHTML = '<span class="text-muted">Requesting OTP from server...</span>';
+              const res = await api("/api/manual-otp/request", {
+                method: "POST",
+                body: JSON.stringify({ classroom: "CSE-A" })
+              });
+              if (studentOtpInput) studentOtpInput.value = res.otp;
+              studentOtpLiveFeedback.innerHTML = `<span class="text-success fw-semibold">&#10003; Fallback OTP: <strong>${res.otp}</strong> (Expires at ${new Date(res.expiresAt).toLocaleTimeString()}). Click 'Authorize Entry' or use the keypad.</span>`;
+            } catch (err) {
+              studentOtpLiveFeedback.innerHTML = `<span class="text-danger">&#10007; ${err.message}</span>`;
+            }
+          });
+        }
+
+        if (studentOtpSubmitBtn) {
+          studentOtpSubmitBtn.addEventListener("click", async () => {
+            const code = studentOtpInput?.value?.trim();
+            if (!code) {
+              studentOtpLiveFeedback.innerHTML = '<span class="text-danger">&#10007; Please enter the 6-digit OTP.</span>';
+              return;
+            }
+            try {
+              studentOtpLiveFeedback.innerHTML = '<span class="text-muted">Verifying OTP with backend...</span>';
+              const res = await api("/api/manual-otp/verify", {
+                method: "POST",
+                body: JSON.stringify({ classroom: "CSE-A", otp: code })
+              });
+              studentOtpLiveFeedback.innerHTML = `<span class="text-success fw-semibold">&#10003; ${res.message}</span>`;
+            } catch (err) {
+              studentOtpLiveFeedback.innerHTML = `<span class="text-danger">&#10007; ${err.message}</span>`;
+            }
           });
         }
       } else if (role === "faculty") {
@@ -2278,16 +2441,18 @@
     }
 
     function renderQuickCommands() {
-      const disabled = !["faculty", "admin", "hod"].includes(state.user.role);
-      const markup = COMMAND_BUTTONS.map(([command, label]) => `
+      const userRole = state.user?.role || "student";
+      const allowed = getRoleAllowedCommands(userRole);
+      const markup = allowed.length ? allowed.map(([command, label, , style]) => `
         <div class="command-card">
           <button type="button" class="pin-toggle ${isPinnedCommand(command) ? "active" : ""}" data-pin-command="${command}">${isPinnedCommand(command) ? "Pinned" : "Pin"}</button>
-          <button class="command-btn ${disabled ? "opacity-50" : ""}" data-command="${command}" ${disabled ? "disabled" : ""}>
+          <button class="command-btn ${style || ""}" data-command="${command}">
             <div class="fw-semibold">${label}</div>
             <div class="small-note">${command}</div>
           </button>
         </div>
-      `).join("");
+      `).join("") : `<div class="small-note p-3">No direct device control commands authorized for role "${userRole}".</div>`;
+
       if (els.quickCommands) els.quickCommands.innerHTML = markup;
       if (els.controlCommands) els.controlCommands.innerHTML = markup;
       renderPinnedDashboardCommands();
@@ -2909,25 +3074,207 @@
         : "No command sent yet.";
     }
 
+    function escapeHtmlAttr(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
     function renderUsersTable(users = []) {
+      state.currentUsersList = users;
+      const isAdmin = state.user?.role === "admin";
       els.usersBody.innerHTML = users.length
         ? users.map((user) => {
             const active = user.active !== false;
-            return `<tr><td>${user.name || "-"}</td><td>${user.email || "-"}</td><td>${user.role}</td><td>${user.department || "-"}</td><td>${user.className || user.class || "-"}</td><td>${user.fingerprintEnrollmentId || "-"}</td><td>${active ? "Active" : "Inactive"}</td><td><button class="btn btn-outline-primary btn-sm" type="button" data-user-active="${user.uid}" data-active="${active ? "false" : "true"}">${active ? "Deactivate" : "Activate"}</button></td></tr>`;
+            const isStudent = user.role === "student";
+            const fpId = user.fingerprintEnrollmentId || user.fingerprintId || "";
+            const username = user.username || user.uid || "-";
+            const enrollBtn = (isAdmin && isStudent)
+              ? `<button class="btn btn-outline-success btn-sm ms-1" type="button" data-enroll-fingerprint="${escapeHtmlAttr(user.uid)}" data-student-id="${escapeHtmlAttr(user.studentId || user.rollNo || user.uid)}" data-student-name="${escapeHtmlAttr(user.name || "Student")}">Enroll FP</button>`
+              : "";
+            const clearBtn = (isAdmin && isStudent && fpId)
+              ? `<button class="btn btn-outline-warning btn-sm ms-1" type="button" data-clear-fingerprint="${escapeHtmlAttr(user.uid)}" data-student-name="${escapeHtmlAttr(user.name || "Student")}">Clear FP</button>`
+              : "";
+            const editBtn = isAdmin
+              ? `<button class="btn btn-outline-primary btn-sm me-1" type="button" data-edit-user="${escapeHtmlAttr(user.uid)}">Edit</button>`
+              : "";
+            const pwdHtml = user.assignedPassword
+              ? `<div class="d-inline-flex align-items-center gap-1">
+                   <span class="user-pwd-text font-monospace small" data-pwd="${escapeHtmlAttr(user.assignedPassword)}">••••••••</span>
+                   <button class="btn btn-sm btn-link p-0 text-decoration-none text-muted pwd-toggle-btn" type="button" title="Show/Hide Password">👁️</button>
+                 </div>`
+              : `<span class="text-muted small">Encrypted</span>`;
+
+            const deleteBtn = (isAdmin && user.uid !== state.user?.uid)
+              ? `<button class="btn btn-outline-danger btn-sm ms-1" type="button" data-delete-user="${escapeHtmlAttr(user.uid)}" data-user-name="${escapeHtmlAttr(user.name || username)}">Delete</button>`
+              : "";
+
+            return `<tr>
+              <td><span class="badge bg-light text-dark border font-monospace">${escapeHtmlAttr(username)}</span></td>
+              <td>${escapeHtmlAttr(user.name) || "-"}</td>
+              <td>${escapeHtmlAttr(user.email) || "-"}</td>
+              <td><span class="badge bg-secondary">${escapeHtmlAttr(user.role)}</span></td>
+              <td>${escapeHtmlAttr(user.department) || "-"}</td>
+              <td>${escapeHtmlAttr(user.className || user.class) || "-"}</td>
+              <td>${fpId ? `<span class="badge bg-info text-dark">ID: ${escapeHtmlAttr(fpId)}</span>` : `<span class="text-muted">Not enrolled</span>`}</td>
+              <td>${pwdHtml}</td>
+              <td>${active ? '<span class="text-success fw-semibold">Active</span>' : '<span class="text-danger fw-semibold">Inactive</span>'}</td>
+              <td>
+                ${editBtn}
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-user-active="${escapeHtmlAttr(user.uid)}" data-active="${active ? "false" : "true"}">${active ? "Deactivate" : "Activate"}</button>
+                ${enrollBtn}
+                ${clearBtn}
+                ${deleteBtn}
+              </td>
+            </tr>`;
           }).join("")
-        : "<tr><td colspan='8'>No users found.</td></tr>";
+        : "<tr><td colspan='10'>No users found.</td></tr>";
+
+      document.querySelectorAll("[data-edit-user]").forEach((button) => {
+        button.addEventListener("click", () => openEditUserModal(button.dataset.editUser));
+      });
+      document.querySelectorAll("[data-delete-user]").forEach((button) => {
+        button.addEventListener("click", () => deleteManagedUser(button.dataset.deleteUser, button.dataset.userName));
+      });
+      document.querySelectorAll(".pwd-toggle-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          const span = button.parentElement.querySelector(".user-pwd-text");
+          if (!span) return;
+          const isMasked = span.textContent.startsWith("•");
+          span.textContent = isMasked ? span.dataset.pwd : "••••••••";
+        });
+      });
       document.querySelectorAll("[data-user-active]").forEach((button) => {
         button.addEventListener("click", () => updateUserActive(button.dataset.userActive, button.dataset.active === "true"));
       });
+      document.querySelectorAll("[data-enroll-fingerprint]").forEach((button) => {
+        button.addEventListener("click", () => startFingerprintEnrollment(button.dataset.enrollFingerprint, button.dataset.studentId, button.dataset.studentName));
+      });
+      document.querySelectorAll("[data-clear-fingerprint]").forEach((button) => {
+        button.addEventListener("click", () => clearFingerprint(button.dataset.clearFingerprint, button.dataset.studentName));
+      });
+    }
+
+    async function deleteManagedUser(uid, name) {
+      if (uid === state.user?.uid) {
+        alert("You cannot delete your own account.");
+        return;
+      }
+      if (!confirm(`Are you sure you want to permanently delete user "${name || uid}" (${uid})?\n\nThis will remove their login access and enrolled records.`)) return;
+      try {
+        await api(`/api/users/${encodeURIComponent(uid)}`, { method: "DELETE" });
+        setMessage(els.userMessage, `User "${name || uid}" deleted successfully.`, "ok");
+        closeEditUserModal();
+        await loadUsersForSettings();
+      } catch (err) {
+        setMessage(els.userMessage, `Failed to delete user: ${err.message}`, "error");
+        if (els.editUserMessage) setMessage(els.editUserMessage, err.message, "error");
+      }
+    }
+
+    function openEditUserModal(uid) {
+      const user = (state.currentUsersList || []).find((u) => u.uid === uid);
+      if (!user) return;
+      els.editUserUid.value = user.uid || "";
+      els.editUserUsername.value = user.username || user.uid || "";
+      els.editUserName.value = user.name || "";
+      els.editUserEmail.value = user.email || "";
+      els.editUserRole.value = user.role || "student";
+      els.editUserDepartment.value = user.department || "";
+      els.editUserClass.value = user.className || user.class || "";
+      els.editUserFingerprint.value = user.fingerprintEnrollmentId || user.fingerprintId || "";
+      els.editUserPassword.value = user.assignedPassword || "";
+      setMessage(els.editUserMessage, "");
+      if (els.editUserModal) {
+        els.editUserModal.style.display = "block";
+        els.editUserModal.classList.add("show");
+      }
+    }
+
+    function closeEditUserModal() {
+      if (els.editUserModal) {
+        els.editUserModal.style.display = "none";
+        els.editUserModal.classList.remove("show");
+      }
+    }
+
+    async function saveEditUser() {
+      const uid = els.editUserUid.value;
+      if (!uid) return;
+      const payload = {
+        username: els.editUserUsername.value.trim(),
+        name: els.editUserName.value.trim(),
+        email: els.editUserEmail.value.trim(),
+        role: els.editUserRole.value,
+        department: els.editUserDepartment.value.trim(),
+        className: els.editUserClass.value.trim(),
+        fingerprintEnrollmentId: els.editUserFingerprint.value.trim()
+      };
+      const pwd = els.editUserPassword.value;
+      if (pwd) {
+        if (!isStrongPassword(pwd)) {
+          setMessage(els.editUserMessage, "Password must be at least 8 characters and include alphabets, numbers, and special characters.", "error");
+          return;
+        }
+        payload.password = pwd;
+      }
+      try {
+        setMessage(els.editUserMessage, "Saving changes...", "info");
+        await api(`/api/users/${encodeURIComponent(uid)}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload)
+        });
+        setMessage(els.userMessage, `Account '${payload.username || uid}' updated successfully.`, "ok");
+        closeEditUserModal();
+        await loadUsersForSettings();
+      } catch (err) {
+        setMessage(els.editUserMessage, err.message, "error");
+      }
+    }
+
+    async function startFingerprintEnrollment(uid, studentId, studentName) {
+      if (!confirm(`Initiate fingerprint enrollment on ESP32 for student "${studentName}"?\n\nThe student must place their finger on the R307 sensor when the LCD prompts: 'ENROLL FINGER / PLACE FINGER'.`)) return;
+      try {
+        const res = await api("/api/control/command", {
+          method: "POST",
+          body: JSON.stringify({
+            command: "enroll_fingerprint",
+            classroom: "CSE-A",
+            payload: { uid, studentId, studentName }
+          })
+        });
+        setMessage(els.userMessage, `Enrollment session created (Command ID: ${res.commandId}). The ESP32 is awaiting the student's fingerprint on sensor.`, "ok");
+      } catch (err) {
+        setMessage(els.userMessage, `Failed to initiate enrollment: ${err.message}`, "error");
+      }
+    }
+
+    async function clearFingerprint(uid, studentName) {
+      if (!confirm(`Clear fingerprint mapping for student "${studentName}"?`)) return;
+      try {
+        await api(`/api/users/${uid}`, {
+          method: "PATCH",
+          body: JSON.stringify({ fingerprintEnrollmentId: "", fingerprintId: "" })
+        });
+        setMessage(els.userMessage, `Fingerprint mapping removed for ${studentName}.`, "ok");
+        await loadUsersForSettings();
+      } catch (err) {
+        setMessage(els.userMessage, `Failed to clear fingerprint: ${err.message}`, "error");
+      }
     }
 
     async function loadUsersForSettings() {
       const users = await api("/api/users");
-      renderUsersTable(users.users || []);
+      state.currentUsersList = users.users || [];
+      renderUsersTable(state.currentUsersList);
     }
 
     async function createManagedUser() {
       const payload = {
+        username: els.userUsername ? els.userUsername.value.trim() : "",
         name: els.userName.value.trim(),
         email: els.userEmail.value.trim(),
         password: els.userPassword.value,
@@ -2942,7 +3289,7 @@
       }
       try {
         await api("/api/users", { method: "POST", body: JSON.stringify(payload) });
-        ["userName", "userEmail", "userPassword", "userClass", "userFingerprint"].forEach((key) => {
+        ["userUsername", "userName", "userEmail", "userPassword", "userClass", "userFingerprint"].forEach((key) => {
           if (els[key]) els[key].value = "";
         });
         setMessage(els.userMessage, "User created.", "ok");
@@ -2975,7 +3322,7 @@
 
       try {
         const feedback = await api("/api/feedback");
-        state.feedbackEntries = feedback.entries || [];
+        state.feedbackEntries = Array.isArray(feedback?.entries) ? feedback.entries : [];
       } catch (error) {
         state.feedbackEntries = [];
       }
@@ -2991,7 +3338,7 @@
         try {
           await loadUsersForSettings();
         } catch (error) {
-          els.usersBody.innerHTML = `<tr><td colspan='8'>${error.message}</td></tr>`;
+          els.usersBody.innerHTML = `<tr><td colspan='10'>${error.message}</td></tr>`;
         }
 
         try {
@@ -3003,7 +3350,7 @@
           els.activityBody.innerHTML = `<tr><td colspan='4'>${error.message}</td></tr>`;
         }
       } else {
-        els.usersBody.innerHTML = "<tr><td colspan='8'>User management is available only for HOD and admin.</td></tr>";
+        els.usersBody.innerHTML = "<tr><td colspan='10'>User management is available only for HOD and admin.</td></tr>";
         els.activityBody.innerHTML = "<tr><td colspan='4'>Activity log is available only for HOD and admin.</td></tr>";
       }
 
@@ -3373,6 +3720,9 @@
       wireNavigation();
 
       els.loginBtn.addEventListener("click", handleLogin);
+      [els.loginEmail, els.loginPassword].forEach((input) => {
+        if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") handleLogin(); });
+      });
       els.forgotPasswordBtn.addEventListener("click", handleForgotPassword);
       els.signupBtn.addEventListener("click", handleSignup);
       els.signupRole.addEventListener("change", updateSignupRoleFields);
@@ -3399,6 +3749,16 @@
       els.feedbackSubmitBtn.addEventListener("click", submitFeedback);
       els.feedbackConfigBtn.addEventListener("click", saveFeedbackConfig);
       els.createUserBtn.addEventListener("click", createManagedUser);
+      if (els.saveEditUserBtn) els.saveEditUserBtn.addEventListener("click", saveEditUser);
+      if (els.deleteUserFromModalBtn) {
+        els.deleteUserFromModalBtn.addEventListener("click", () => {
+          const uid = els.editUserUid.value;
+          const name = els.editUserName.value || uid;
+          if (uid) deleteManagedUser(uid, name);
+        });
+      }
+      if (els.closeEditUserModalBtn) els.closeEditUserModalBtn.addEventListener("click", closeEditUserModal);
+      if (els.cancelEditUserModalBtn) els.cancelEditUserModalBtn.addEventListener("click", closeEditUserModal);
       els.toggleTimetableFormBtn.addEventListener("click", () => setTimetableFormVisibility(!state.timetableFormOpen));
       els.saveTimetableBtn.addEventListener("click", saveTimetableEntry);
       els.timetableSuggestionMode.addEventListener("change", async (event) => {
