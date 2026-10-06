@@ -2991,14 +2991,32 @@
     }
 
     async function loadClassOptions() {
-      const data = await api("/api/attendance/classes");
-      els.attendanceClassSelect.innerHTML = data.classes.map((item) => `<option value="${item}">${item}</option>`).join("");
-      if (data.classes.includes(state.user.className)) state.attendanceClass = state.user.className;
-      if (["student", "cc"].includes(state.user.role) && data.classes.includes(state.user.className || state.user.class)) {
-        state.attendanceClass = state.user.className || state.user.class;
+      try {
+        const data = await api("/api/attendance/classes");
+        const availableClasses = (data && Array.isArray(data.classes) && data.classes.length)
+          ? data.classes
+          : ["Electrical-A", "CSE-A", "SY", "TY", "BE"];
+
+        els.attendanceClassSelect.innerHTML = availableClasses.map((item) => `<option value="${item}">${item}</option>`).join("");
+
+        // For student and CC, lock to their assigned class
+        if (["student", "cc"].includes(state.user.role)) {
+          const userClass = state.user.className || state.user.class;
+          if (userClass) state.attendanceClass = userClass;
+          els.attendanceClassSelect.disabled = true;
+        } else {
+          // For admin, hod, faculty: allow free switching
+          els.attendanceClassSelect.disabled = false;
+          // If current state.attendanceClass is not valid in available options, pick the first valid one
+          if (!state.attendanceClass || !availableClasses.includes(state.attendanceClass)) {
+            state.attendanceClass = availableClasses[0];
+          }
+        }
+
+        els.attendanceClassSelect.value = state.attendanceClass;
+      } catch (err) {
+        console.error("Failed to load class options:", err);
       }
-      els.attendanceClassSelect.value = state.attendanceClass;
-      els.attendanceClassSelect.disabled = ["student", "cc"].includes(state.user.role);
     }
 
     async function loadTimetable() {
@@ -3732,6 +3750,7 @@
         state.attendanceClass = event.target.value;
         await loadAttendance();
         await loadTimetable();
+        if (canAccessView("dashboard")) await loadDashboard();
       });
       els.attendanceExportBtn.addEventListener("click", handleAttendanceExport);
       els.attendanceExportMonths.addEventListener("change", () => {
