@@ -2635,6 +2635,44 @@ app.post("/api/esp/attendance", async (req, res) => {
   }
 });
 
+app.post("/api/esp/enroll-result", async (req, res) => {
+  if (!verifyEspKey(req, res)) return;
+  try {
+    const body = req.body || {};
+    const uid = sanitizeForPath(body.uid);
+    const fingerprintId = normalizeFingerprint(body.fingerprintId);
+    const studentId = normalizeText(body.studentId);
+    const status = normalizeText(body.status);
+
+    if (!uid || !fingerprintId) {
+      return res.status(400).json({ error: "Missing uid or fingerprintId in enroll result" });
+    }
+
+    if (status === "success") {
+      await dbUpdate(`users/${uid}`, {
+        fingerprintEnrollmentId: fingerprintId,
+        fingerprintId: fingerprintId,
+        updatedAt: new Date().toISOString()
+      });
+      await dbSet(`fingerprints/${fingerprintId}`, {
+        uid,
+        studentId: studentId || uid,
+        enrolledAt: new Date().toISOString()
+      });
+      await logActivity("fingerprint_enrolled", { uid: "esp32", name: "ESP32 Node", role: "hardware" }, {
+        targetUid: uid,
+        fingerprintSlot: fingerprintId,
+        studentId
+      });
+      return res.json({ ok: true, message: `Fingerprint slot ${fingerprintId} linked to user ${uid}` });
+    }
+
+    return res.json({ ok: false, message: `Enrollment status: ${status}` });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to process enroll result", details: err.message });
+  }
+});
+
 app.post("/api/esp/access-event", async (req, res) => {
   if (!verifyEspKey(req, res)) return;
   try {
