@@ -84,11 +84,11 @@ public:
 
     // 1. Capture Image (non-blocking test)
     uint8_t p = finger->getImage();
-    if (p != FIMG_OK) return; // No finger placed
+    if (p != FINGERPRINT_OK) return; // No finger placed
 
     // 2. Convert Raw Image to Characteristic File
     p = finger->image2Tz();
-    if (p != FIMG_OK) {
+    if (p != FINGERPRINT_OK) {
       Serial.println("[R307] Image conversion failed.");
       return;
     }
@@ -105,7 +105,7 @@ public:
 
     // 4. On-chip Biometric Hardware Search
     p = finger->fingerSearch();
-    if (p == FIMG_OK) {
+    if (p == FINGERPRINT_OK) {
       int matchedSlot = finger->fingerID;
       int confidence = finger->confidence;
       Serial.printf("[R307] Match: Slot ID %d, Confidence %d\n", matchedSlot, confidence);
@@ -147,7 +147,7 @@ public:
       // IMPORTANT:
       // Occupancy increment and attendance marking are STRICTLY DEFERRED
       // until BeamManager confirms dual-beam optical crossing!
-    } else if (p == FIMG_NOTFOUND) {
+    } else if (p == FINGERPRINT_NOTFOUND) {
       Serial.println("[R307] Fingerprint not recognized.");
       lcd.showAccessDenied("USE OTP FALLBACK");
       buzzer.beepDenied();
@@ -202,9 +202,9 @@ public:
     uint8_t p;
     if (enrollStep == 1) { // Place finger first time
       p = finger->getImage();
-      if (p == FIMG_OK) {
+      if (p == FINGERPRINT_OK) {
         p = finger->image2Tz(1);
-        if (p == FIMG_OK) {
+        if (p == FINGERPRINT_OK) {
           Serial.println("[ENROLL] Image 1 converted. Lift finger.");
           lcd.showMessage("REMOVE FINGER   ", "PLEASE LIFT     ");
           buzzer.beepConfirmation();
@@ -213,19 +213,19 @@ public:
       }
     } else if (enrollStep == 2) { // Wait for finger removal
       p = finger->getImage();
-      if (p == FIMG_NOFINGER) {
+      if (p == FINGERPRINT_NOFINGER) {
         lcd.showMessage("PLACE AGAIN     ", "SAME FINGER     ");
         enrollStep = 3;
       }
     } else if (enrollStep == 3) { // Place finger second time
       p = finger->getImage();
-      if (p == FIMG_OK) {
+      if (p == FINGERPRINT_OK) {
         p = finger->image2Tz(2);
-        if (p == FIMG_OK) {
+        if (p == FINGERPRINT_OK) {
           p = finger->createModel();
-          if (p == FIMG_OK) {
+          if (p == FINGERPRINT_OK) {
             p = finger->storeModel(targetEnrollSlot);
-            if (p == FIMG_OK) {
+            if (p == FINGERPRINT_OK) {
               Serial.printf("[ENROLL] SUCCESS: Registered in slot %d\n", targetEnrollSlot);
               lcd.showEnrollSuccess(targetEnrollSlot);
               buzzer.startPattern(2, 100, 100);
