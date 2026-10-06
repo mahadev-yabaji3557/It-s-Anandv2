@@ -61,7 +61,7 @@
 #define WIFI_PASSWORD               "1234567890"
 
 // Render Backend URL and Classroom identifier
-#define BACKEND_BASE_URL            "https://smart-classroom-attendan-12911.onrender.com"
+#define BACKEND_BASE_URL            "https://it-s-anandv2.onrender.com"
 #define CLASSROOM_ID                "CSE-A"
 #define DEVICE_ID                   "esp32_01"
 #define FIRMWARE_VERSION            "2.3.0-production"
