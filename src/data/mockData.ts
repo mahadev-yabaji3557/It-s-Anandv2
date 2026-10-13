@@ -1,0 +1,390 @@
+﻿import { Toilet, TrainOverview, FeedbackReport, SystemSettings } from '../types';
+
+export const INITIAL_TRAINS: TrainOverview[] = [
+  {
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    route: 'Mumbai Central (MMCT) ➔ New Delhi (NDLS)',
+    coaches: ['H1', 'A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'B5'],
+    totalToilets: 16
+  },
+  {
+    trainNumber: '20901',
+    trainName: 'Vande Bharat Express',
+    route: 'Mumbai Central (MMCT) ➔ Gandhinagar Capital (GNC)',
+    coaches: ['EC1', 'C1', 'C2', 'C3', 'C4', 'C5'],
+    totalToilets: 12
+  },
+  {
+    trainNumber: '12626',
+    trainName: 'Kerala SF Express',
+    route: 'New Delhi (NDLS) ➔ Thiruvananthapuram (TVC)',
+    coaches: ['A1', 'B1', 'B2', 'S1', 'S2', 'S3', 'S4'],
+    totalToilets: 14
+  }
+];
+
+export const INITIAL_SETTINGS: SystemSettings = {
+  odorWarningPpm: 45,
+  odorCriticalPpm: 75,
+  lowWaterAlertPercent: 25,
+  usageThresholdForCleaning: 15,
+  autoAlertStaff: true,
+  soundAlerts: false,
+  simulationIntervalSec: 6,
+  activeRole: 'Admin'
+};
+
+const generatePastTelemetry = (currentPpm: number, currentWater: number) => {
+  const history = [];
+  const now = Date.now();
+  for (let i = 12; i >= 0; i--) {
+    const time = new Date(now - i * 10 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const driftOdor = Math.max(8, Math.min(95, currentPpm - (i * 2.5) + (Math.random() * 8 - 4)));
+    const driftWater = Math.min(100, Math.max(5, currentWater + (i * 2.2) + (Math.random() * 4 - 2)));
+    history.push({
+      timestamp: time,
+      odorPpm: Math.round(driftOdor),
+      waterLevelPercent: Math.round(driftWater),
+      doorState: (i % 3 === 0 ? 'Closed/Locked' : 'Open') as 'Open' | 'Closed/Locked'
+    });
+  }
+  return history;
+};
+
+export const INITIAL_TOILETS: Toilet[] = [
+  {
+    toiletId: 'B1-T1',
+    name: 'Coach B1 - Forward (LH)',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'B1',
+    coachType: 'AC 3-Tier',
+    side: 'Forward',
+    status: 'Available',
+    doorState: 'Open',
+    odorLevel: 22,
+    odorRating: 'Good',
+    waterLevelPercent: 88,
+    usageCount: 4,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: false,
+    maintenanceRequired: false,
+    lastCleanedAt: '2 hours ago (Surat Jn)',
+    telemetryHistory: generatePastTelemetry(22, 88),
+    alertHistory: []
+  },
+  {
+    toiletId: 'B1-T2',
+    name: 'Coach B1 - Aft (RH)',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'B1',
+    coachType: 'AC 3-Tier',
+    side: 'Aft',
+    status: 'Occupied',
+    doorState: 'Closed/Locked',
+    odorLevel: 48,
+    odorRating: 'Moderate',
+    waterLevelPercent: 72,
+    usageCount: 11,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: false,
+    maintenanceRequired: false,
+    lastCleanedAt: '3 hours ago (Vadodara Jn)',
+    telemetryHistory: generatePastTelemetry(48, 72),
+    alertHistory: []
+  },
+  {
+    toiletId: 'B2-T1',
+    name: 'Coach B2 - Forward (LH)',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'B2',
+    coachType: 'AC 3-Tier',
+    side: 'Forward',
+    status: 'Available',
+    doorState: 'Open',
+    odorLevel: 82,
+    odorRating: 'Critical',
+    waterLevelPercent: 18,
+    usageCount: 18,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: true,
+    maintenanceRequired: false,
+    assignedStaff: 'Ramesh Kumar (OBHS Team 2)',
+    lastCleanedAt: '5 hours ago (Ratlam Jn)',
+    telemetryHistory: generatePastTelemetry(82, 18),
+    alertHistory: [
+      {
+        id: 'alt-101',
+        timestamp: '15 mins ago',
+        toiletId: 'B2-T1',
+        coachId: 'B2',
+        trainNumber: '12951',
+        type: 'high_odor',
+        severity: 'high',
+        message: 'Ammonia/Gas sensor peaked at 82 PPM (Threshold 45 PPM)',
+        acknowledged: true,
+        resolved: false,
+        assignedStaff: 'Ramesh Kumar'
+      },
+      {
+        id: 'alt-102',
+        timestamp: '8 mins ago',
+        toiletId: 'B2-T1',
+        coachId: 'B2',
+        trainNumber: '12951',
+        type: 'low_water',
+        severity: 'critical',
+        message: 'Water tank dropped below 20% (Current: 18%)',
+        acknowledged: false,
+        resolved: false
+      }
+    ]
+  },
+  {
+    toiletId: 'B2-T2',
+    name: 'Coach B2 - Aft (RH)',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'B2',
+    coachType: 'AC 3-Tier',
+    side: 'Aft',
+    status: 'Under Cleaning',
+    doorState: 'Closed/Locked',
+    odorLevel: 35,
+    odorRating: 'Good',
+    waterLevelPercent: 65,
+    usageCount: 0,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: true,
+    maintenanceRequired: false,
+    assignedStaff: 'Sunil Shinde (OBHS)',
+    cleaningStartedAt: '10 mins ago',
+    lastCleanedAt: 'In progress',
+    telemetryHistory: generatePastTelemetry(35, 65),
+    alertHistory: []
+  },
+  {
+    toiletId: 'A1-T1',
+    name: 'Coach A1 - Forward (LH)',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'A1',
+    coachType: 'AC 2-Tier',
+    side: 'Forward',
+    status: 'Available',
+    doorState: 'Open',
+    odorLevel: 16,
+    odorRating: 'Good',
+    waterLevelPercent: 94,
+    usageCount: 3,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: false,
+    maintenanceRequired: false,
+    lastCleanedAt: '1 hour ago',
+    telemetryHistory: generatePastTelemetry(16, 94),
+    alertHistory: []
+  },
+  {
+    toiletId: 'A1-T2',
+    name: 'Coach A1 - Aft (RH)',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'A1',
+    coachType: 'AC 2-Tier',
+    side: 'Aft',
+    status: 'Out of Service',
+    doorState: 'Closed/Locked',
+    odorLevel: 30,
+    odorRating: 'Good',
+    waterLevelPercent: 0,
+    usageCount: 0,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: false,
+    maintenanceRequired: true,
+    lastCleanedAt: 'Yesterday',
+    telemetryHistory: generatePastTelemetry(30, 0),
+    alertHistory: [
+      {
+        id: 'alt-103',
+        timestamp: '40 mins ago',
+        toiletId: 'A1-T2',
+        coachId: 'A1',
+        trainNumber: '12951',
+        type: 'fault',
+        severity: 'high',
+        message: 'Bio-toilet flush solenoid valve jammed & zero water pressure reported',
+        acknowledged: true,
+        resolved: false,
+        assignedStaff: 'Senior Carriage Tech (Kota Division)'
+      }
+    ]
+  },
+  {
+    toiletId: 'H1-T1',
+    name: 'Coach H1 - First AC Forward',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'H1',
+    coachType: 'First AC',
+    side: 'Forward',
+    status: 'Available',
+    doorState: 'Open',
+    odorLevel: 12,
+    odorRating: 'Good',
+    waterLevelPercent: 96,
+    usageCount: 2,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: false,
+    maintenanceRequired: false,
+    lastCleanedAt: '45 mins ago',
+    telemetryHistory: generatePastTelemetry(12, 96),
+    alertHistory: []
+  },
+  {
+    toiletId: 'H1-T2',
+    name: 'Coach H1 - First AC Aft',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'H1',
+    coachType: 'First AC',
+    side: 'Aft',
+    status: 'Occupied',
+    doorState: 'Closed/Locked',
+    odorLevel: 25,
+    odorRating: 'Good',
+    waterLevelPercent: 91,
+    usageCount: 6,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: false,
+    maintenanceRequired: false,
+    lastCleanedAt: '2 hours ago',
+    telemetryHistory: generatePastTelemetry(25, 91),
+    alertHistory: []
+  },
+  {
+    toiletId: 'B3-T1',
+    name: 'Coach B3 - Forward (LH)',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'B3',
+    coachType: 'AC 3-Tier',
+    side: 'Forward',
+    status: 'Available',
+    doorState: 'Open',
+    odorLevel: 56,
+    odorRating: 'Poor',
+    waterLevelPercent: 42,
+    usageCount: 16,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: true,
+    maintenanceRequired: false,
+    lastCleanedAt: '4 hours ago',
+    telemetryHistory: generatePastTelemetry(56, 42),
+    alertHistory: [
+      {
+        id: 'alt-104',
+        timestamp: '22 mins ago',
+        toiletId: 'B3-T1',
+        coachId: 'B3',
+        trainNumber: '12951',
+        type: 'high_usage',
+        severity: 'medium',
+        message: 'Trip counter exceeded threshold: 16 passenger visits since last sanitation',
+        acknowledged: false,
+        resolved: false
+      }
+    ]
+  },
+  {
+    toiletId: 'B4-T1',
+    name: 'Coach B4 - Forward (LH)',
+    trainId: '12951',
+    trainNumber: '12951',
+    trainName: 'Rajdhani Superfast Express',
+    coachId: 'B4',
+    coachType: 'AC 3-Tier',
+    side: 'Forward',
+    status: 'Available',
+    doorState: 'Open',
+    odorLevel: 20,
+    odorRating: 'Good',
+    waterLevelPercent: 80,
+    usageCount: 5,
+    sensorOnline: true,
+    lastUpdated: new Date().toLocaleTimeString(),
+    cleaningRequired: false,
+    maintenanceRequired: false,
+    lastCleanedAt: '1.5 hours ago',
+    telemetryHistory: generatePastTelemetry(20, 80),
+    alertHistory: []
+  }
+];
+
+export const INITIAL_FEEDBACKS: FeedbackReport[] = [
+  {
+    id: 'fb-501',
+    timestamp: '25 mins ago',
+    trainNumber: '12951',
+    coachId: 'B2',
+    toiletId: 'B2-T1',
+    passengerName: 'Anil Deshmukh',
+    pnr: '2458910243',
+    cleanlinessRating: 2,
+    waterAvailabilityRating: 1,
+    odorRating: 1,
+    issues: ['High Odor', 'Low Water'],
+    comments: 'Very strong smell and water tap flow is very low. Please send cleaning staff.',
+    status: 'Pending Review'
+  },
+  {
+    id: 'fb-502',
+    timestamp: '1 hour ago',
+    trainNumber: '12951',
+    coachId: 'H1',
+    toiletId: 'H1-T1',
+    passengerName: 'Dr. Meera Iyer',
+    pnr: '4820194812',
+    cleanlinessRating: 5,
+    waterAvailabilityRating: 5,
+    odorRating: 5,
+    issues: [],
+    comments: 'Spick and span! Very fresh and clean, great job by onboard railway staff.',
+    status: 'Resolved'
+  },
+  {
+    id: 'fb-503',
+    timestamp: '2 hours ago',
+    trainNumber: '12951',
+    coachId: 'A1',
+    toiletId: 'A1-T2',
+    passengerName: 'Vikram Joshi',
+    pnr: '3910284756',
+    cleanlinessRating: 1,
+    waterAvailabilityRating: 1,
+    odorRating: 3,
+    issues: ['Broken Flush', 'Broken Tap'],
+    comments: 'Flush button is completely stuck and water is not pumping.',
+    status: 'Action Taken'
+  }
+];
